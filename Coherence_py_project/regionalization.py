@@ -5,7 +5,6 @@ Created on Fri Nov 21 10:14:58 2025
 @author: Marian Schonauer
 """
 
-import os
 import geopandas as gpd
 import rasterio
 import xarray as xr

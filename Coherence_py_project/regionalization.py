@@ -11,9 +11,7 @@ import xarray as xr
 import rioxarray as rio
 import numpy as np
 import pandas as pd
-from shapely.geometry import Point
-from shapely.ops import transform
-import pyproj
+ix = pd.IndexSlice
 import gower
 #pip install scikit-learn-extra
 from sklearn_extra.cluster import KMedoids
@@ -22,6 +20,7 @@ CRS =5514
 
 # --- Setup paths ---
 root = 'D:/OneDrive - Mendelova univerzita v Brně/IGA Team - UFE Wind Throw - General/GIS/'
+
 
 # %% raster data
 '''
@@ -96,16 +95,15 @@ for var in ['LT', 'TYP', 'SUBTYP']:
     
 # %% clustering
 
-# --- Define AOIs (Areas of Interest) ---
-POIs = gpd.GeoDataFrame(index = ['JED'], geometry = gpd.points_from_xy([-583384], [-1149493]), crs = 5514).to_crs(CRS)
+AOIs = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/Elizaveta Avoiani's files - Coherence_VI_Krtiny/gis/windthrow.shp").to_crs(CRS)
 
-# --- Loop through AOIs ---
-for Area, row in POIs.iterrows():
+# Loop through AOIs
+for Area, row in AOIs.iterrows():
 
     print(f'Processing area {Area}...')
 
-    # Create buffer (1000 m radius)
-    AOI = gpd.GeoDataFrame(geometry = [row.geometry.buffer(500)], crs = CRS)
+    # Create buffer (300 m radius)
+    AOI = gpd.GeoDataFrame(geometry = [row.geometry.buffer(300)], crs = CRS)
             
     clip = st.rio.clip(AOI.geometry)
     
@@ -113,18 +111,20 @@ for Area, row in POIs.iterrows():
         .drop(columns = ['band', 'spatial_ref'])\
             .dropna()
 
-    # --- Compute Gower distance ---
+    # Compute Gower distance
     gower_dist = gower.gower_matrix(df)
 
-    # --- PAM Clustering (KMedoids) ---
-    pam_fit = KMedoids(n_clusters=25, metric='precomputed', random_state=42)
+    # PAM Clustering (KMedoids)
+    pam_fit = KMedoids(n_clusters=10, metric='precomputed', random_state=42)
     pam_fit.fit(gower_dist)
     df['cluster'] = pam_fit.labels_
 
-    
+    # print clusters as netCDF
     cluster = xr.Dataset.from_dataframe(df[['cluster']])\
         .transpose('y', 'x')\
             .rio.write_crs(CRS)\
-                .rio.reproject(5514)
+                .rio.reproject(CRS)
                         
-    cluster.to_netcdf("D:/"+Area+"_cluster501.nc")
+    cluster.to_netcdf("D:/Coherence_VI_Krtiny/clusters/tp_plus_buffer_300m/"+str(Area)+".nc")
+    
+    del AOI, clip, df, gower_dist, pam_fit, cluster

@@ -23,11 +23,12 @@ root = 'D:/OneDrive - Mendelova univerzita v Brně/IGA Team - UFE Wind Throw - G
 
 
 # %% raster data
-'''
 PlanetScope = rio.open_rasterio(root + 'forest/canopy/TreeSpecies_PlanetScope.tif')\
     .squeeze()\
         .rio.reproject(CRS)\
             .rename("PlanSco")
+'''
+
 
 def read_rast(path): 
     return rio.open_rasterio(root + path)\
@@ -120,11 +121,12 @@ for Area, row in AOIs.iterrows():
     df['cluster'] = pam_fit.labels_
 
     # print clusters as netCDF
+    # reproject_match to PlanetScope, to coerce same coordinates for every Area. Data intensive but worth it.
     cluster = xr.Dataset.from_dataframe(df[['cluster']])\
         .transpose('y', 'x')\
-            .rio.write_crs(CRS)\
-                .rio.reproject(CRS)
-                        
+                .rio.write_crs(CRS)\
+                    .rio.reproject_match(PlanetScope)
+
     cluster.to_netcdf("D:/Coherence_VI_Krtiny/clusters/tp_plus_buffer_300m/"+str(Area)+".nc")
     
     del AOI, clip, df, gower_dist, pam_fit, cluster

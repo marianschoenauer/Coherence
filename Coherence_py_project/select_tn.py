@@ -5,11 +5,8 @@ Created on Tue Nov 25 10:54:40 2025
 @author: Marian Schonauer
 """
 
-import glob
 import geopandas as gpd
-import rasterio
 import xarray as xr
-import rioxarray as rio
 import numpy as np
 import pandas as pd
 ix = pd.IndexSlice

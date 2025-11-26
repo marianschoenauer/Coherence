@@ -13,38 +13,51 @@ import numpy as np
 import pandas as pd
 ix = pd.IndexSlice
 import glob
+CRS = 5514
 
 windthrows = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/Elizaveta Avoiani's files - Coherence_VI_Krtiny/gis/windthrow.shp").to_crs(CRS)
 
+# create empty multiindex MI
+MI_used = pd.MultiIndex.from_arrays([[],[]], \
+                                         names = ['x', 'y']) 
 
-# read in clusters (incl. buffers) and loop though them
-for path_AOI in glob.glob("D:/Coherence_VI_Krtiny/clusters/tp_plus_buffer_300m/*.nc"):
-    ds = xr.load_dataset(path_AOI)\
-        .rio.write_crs(CRS)
+for ID, row in windthrows.iterrows():
     
+    # read in cluster (incl. buffer)
+    path_clustering = "D:/Coherence_VI_Krtiny/clusters/tp_plus_buffer_300m/"+str(ID)+".nc"
+    ds = xr.load_dataset(path_clustering)\
+        .rio.write_crs(CRS)
+            
     # define true positives (tp), by clipping to extent of 
-    tp = ds.rio.clip(windthrows.geometry)
-    tp.to_netcdf(path_AOI.replace("tp_plus_buffer_300m","tp"))
+    tp = ds.rio.clip(row[['geometry']])
+    tp.to_netcdf(path_clustering.replace("tp_plus_buffer_300m","tp"))
     
     # summary: counts of clusters
     tp_clusters = pd.Series(tp['cluster'].values.flatten()).value_counts()
     
-    # define true negatives, by inversed clipping
-    tn = ds.rio.clip(AOIs.geometry.buffer(20), invert = True)\
+    # define true negatives (tn), by inversed clipping
+    tn = ds.rio.clip(windthrows.geometry.buffer(20), invert = True)\
         .to_dataframe()\
             .set_index('cluster', append = True)
-            
+    
+    # remove the tn cells which were used already (MI_used. in first iteration, the index is empty, but it fills up)
+    tn = tn.loc[~tn.index.isin(MI_used),:].copy()
+
     # blank multiindex with format as for tn  
     MI_select_tn = pd.MultiIndex.from_arrays([[],[],[]], \
-                                             names = tn.index.names)
-    
+                                             names = tn.index.names)    
         
     for clusterID, count in tp_clusters.items():
         
         # select each cluster-ID with "loc", and select the (maximum) number of counts with "iloc"
-        tn.loc[ix[:,:,clusterID],:].iloc[:count,:].index
+        tn_index = tn.loc[ix[:,:,clusterID],:].iloc[:count,:].index
         # append the multiindex
-        MI_select_tn = MI_select_tn.append()
+        MI_select_tn = MI_select_tn.append(tn_index)
+        
+        del tn_index
+    
+    # add MI_select_tn to the MI_used
+    MI_used = MI_used.append(MI_select_tn.droplevel('cluster'))
 
     # transform the multiindex to boolean series
     selected = tn.index.isin(MI_select_tn)
@@ -58,4 +71,4 @@ for path_AOI in glob.glob("D:/Coherence_VI_Krtiny/clusters/tp_plus_buffer_300m/*
         .transpose('y', 'x')\
             .rio.write_crs(CRS)\
                 .rio.reproject(CRS)\
-                    .to_netcdf(path_AOI.replace("tp_plus_buffer_300m","tn_selected"))
+                    .to_netcdf(path_clustering.replace("tp_plus_buffer_300m","tn_selected"))

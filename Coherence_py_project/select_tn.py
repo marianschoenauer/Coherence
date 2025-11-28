@@ -37,7 +37,11 @@ for ID, row in windthrows.iterrows():
     tp_clusters = pd.Series(tp['cluster'].values.flatten()).value_counts()
 
     # define true negatives (tn), by inversed clipping
-    tn = ds.rio.clip(windthrows.geometry.buffer(20), invert = True)\
+    tn = ds.rio.clip(windthrows.geometry.buffer(20), invert = True)
+    
+    tn.to_netcdf(PATH_CLUSTER.replace("tp_plus_buffer_300m","tn_plus_buffer_300m"))
+    
+    tn = tn\
         .to_dataframe()\
             .set_index('cluster', append = True)
 

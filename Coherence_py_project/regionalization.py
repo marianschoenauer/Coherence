@@ -16,8 +16,8 @@ ix = pd.IndexSlice
 
 CRS =5514
 
-ROOT = "D:/OneDrive - Mendelova univerzita v Brně/"
-"IGA Team - UFE Wind Throw - General/GIS/"
+ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/"
+"IGA Team - UFE Wind Throw - General/GIS/")
 
 
 # %% raster data
@@ -110,7 +110,9 @@ for Area, row in AOIs.iterrows():
     print(f'Processing area {Area}...')
 
     # Create buffer (300 m radius)
-    AOI = gpd.GeoDataFrame(geometry = [row.geometry.buffer(300)], crs = CRS)
+    AOI = gpd.GeoDataFrame(geometry = [row.geometry.buffer(500)], crs = CRS)
+    
+    
 
     clip = st.rio.clip(AOI.geometry)
 
@@ -127,12 +129,16 @@ for Area, row in AOIs.iterrows():
     df['cluster'] = pam_fit.labels_
 
     # print clusters as netCDF
-    # reproject_match to PlanetScope, to coerce same coordinates for every
-    ## Area. Data intensive but worth it.
+    # reproject_match to PlanetScope, to coerce same coordinates for every Area
     cluster = xr.Dataset.from_dataframe(df[['cluster']])\
         .transpose('y', 'x')\
                 .rio.write_crs(CRS)\
                     .rio.reproject_match(PlanetScope)
+
+    # crop it to extent of the AOI
+    minx, miny, maxx, maxy = AOI.bounds.to_numpy()[0]
+    cluster = cluster.sel(x = slice(minx-20,maxx+20),
+                          y = slice(maxy+20, miny-20)).copy()
 
     cluster.to_netcdf("D:/Coherence_VI_Krtiny/clusters/tp_plus_buffer_300m/"+
                       str(Area)+".nc")

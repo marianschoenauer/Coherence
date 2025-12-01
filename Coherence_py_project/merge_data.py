@@ -19,6 +19,105 @@ CRS =5514
 ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/"
 "IGA Team - UFE Wind Throw - General/GIS/")
 
+
+# %% test
+
+ds = xr.load_dataset("D:/Coherence_VI_Krtiny/coherence_backscatter_data/"
+                "netCDF/coherence_stack_Krtiny_10m_pairs.nc")
+crs_wkt = ds.spatial_ref.attrs['crs_wkt']
+ds = ds.rio.write_crs(crs_wkt)
+
+
+
+for i in ds.pair.values:
+
+    ds_i = ds.isel(pair=i)
+    t1 = ds_i['master_time'].values
+    t2 = ds_i['slave_time'].values
+    
+    times = np.sort(([t1,t2]))
+    
+    print(t2 > t1)
+    
+    
+# %%% read tiles
+
+df_list = []
+
+for PATH in glob.glob("D:/Coherence_VI_Krtiny/clusters/tp_plus_buffer_300m/*.nc"):
+
+    AOI = xr.load_dataset(PATH)
+    AOI = AOI.rio.write_crs(AOI.spatial_ref.attrs['crs_wkt'])
+
+    tp = xr.load_dataset(PATH.replace("tp_plus_buffer_300m","tp"))
+    tp = tp.rio.write_crs(tp.spatial_ref.attrs['crs_wkt'])\
+            .rio.reproject_match(AOI)\
+                .to_dataframe()\
+                    .dropna()
+
+    tn = xr.load_dataset(PATH.replace("tp_plus_buffer_300m","tn_plus_buffer_300m"))
+    tn = tn.rio.write_crs(tn.spatial_ref.attrs['crs_wkt'])\
+            .rio.reproject_match(AOI)\
+                .to_dataframe()\
+                    .dropna()
+                    
+    ds_i = ds.rio.reproject_match(AOI)
+    ds_i_df = ds_i.to_dataframe()
+
+     
+
+    tp_sat = ds_i_df.loc[ds_i_df.index.droplevel('pair').isin(tp.index),:].assign(Gap = True, 
+                  ID = PATH.replace("D:/Coherence_VI_Krtiny/clusters/tp_plus_buffer_300m\\",""))
+    tn_sat = ds_i_df.loc[ds_i_df.index.droplevel('pair').isin(tn.index),:].assign(Gap = False, 
+                  ID = PATH.replace("D:/Coherence_VI_Krtiny/clusters/tp_plus_buffer_300m\\",""))
+
+    df_list.append(tp_sat)
+    df_list.append(tn_sat)
+
+    del tp, tn, tp_sat, tn_sat
+
+df = pd.concat(df_list)
+
+# %% set index
+df = df.reset_index()\
+    .set_index(['ID', 'pair', 'Gap', 'x', 'y'])\
+        .sort_index()
+        
+res = []
+    
+for ID in df.index.levels[0]:
+           
+    for pair in df.index.levels[1]:
+        df_pair = df.loc[ix[ID,pair],:]
+        
+        gap = df_pair.loc[True,'coherence'].values
+        nogap = df_pair.loc[False,'coherence'].values
+        
+        df_pair['baseline_days'][0]
+        
+        df_pair.columns
+        
+        res.append({
+        'ID':ID,
+        'pair':pair,
+         'baseline_days':df_pair['baseline_days'][0],
+         'master_time':df_pair['master_time'][0],
+         'slave_time':df_pair['slave_time'][0],
+         'diff':gap.mean() - nogap.mean()})
+    
+  
+    
+res = pd.DataFrame(res).set_index(['ID','pair'])
+
+
+# %%%
+res['baseline_days'] = res['baseline_days'].astype(str)
+
+res = res.loc[(res.slave_time > np.datetime64("2024-03-01")) & (res.slave_time < np.datetime64("2024-10-01"))]
+  
+sns.scatterplot(res, x = 'slave_time', y = 'diff', hue = 'baseline_days')
+plt.xticks(rotation=90)
+plt.axhline(0)
 # %% raster data
 
 df_list = []
@@ -27,23 +126,21 @@ for PATH in glob.glob("D:/Coherence_VI_Krtiny/clusters/tp_plus_buffer_300m/*.nc"
     
     AOI = xr.load_dataset(PATH)
     AOI = AOI.rio.write_crs(AOI.spatial_ref.attrs['crs_wkt'])
-    
-    """
+
 
     coherence =xr.load_dataset("D:/Coherence_VI_Krtiny/coherence_backscatter_data/"
-                    "netCDF/coherence_stack_Krtiny_40m_32633.nc")
+                    "netCDF/coherence_stack_Krtiny_10m_pairs.nc")
     coherence = coherence\
         .rio.write_crs(coherence.spatial_ref.attrs['spatial_ref'])\
             .rio.reproject_match(AOI)\
-                .groupby(coherence.time.dt.strftime('%Y%m%d')).mean()                
+                .groupby(coherence.slave_time.dt.strftime('%Y%m%d')).mean()                
                                  
     s1 =  xr.load_dataset("D:/Coherence_VI_Krtiny/s1/"
                     "0.nc")
     s1 = s1.rio.write_crs(s1.spatial_ref.attrs['crs_wkt'])\
             .rio.reproject_match(AOI)\
                 .groupby(s1.time.dt.strftime('%Y%m%d')).mean()
-                
-    """
+
 
     s2 =  xr.load_dataset("D:/Coherence_VI_Krtiny/s2/"
                     "0.nc")
@@ -51,7 +148,7 @@ for PATH in glob.glob("D:/Coherence_VI_Krtiny/clusters/tp_plus_buffer_300m/*.nc"
             .rio.reproject_match(AOI)\
                 .groupby(s2.time.dt.strftime('%Y%m%d')).mean()
     
-    df_sub = xr.merge([s2])\
+    df_sub = xr.merge([coherence, s1, s2])\
         .to_dataframe()\
             .astype(float)\
                     .sort_index()
@@ -194,4 +291,4 @@ for ID in Pred.index.levels[0]:
     ds['month_after'].plot(ax = ax[2])
 
 
-    ds.to_netcdf("D:/Coherence_VI_Krtiny/preds" + ID + ".nc")
+    ds.to_netcdf("D:/Coherence_VI_Krtiny/preds/" + ID + ".nc")

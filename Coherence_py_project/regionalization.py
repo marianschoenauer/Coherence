@@ -126,8 +126,8 @@ all_gaps = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
                            "shapefiles/gaps.gpkg", layer = "canopy_diffs")\
     .to_crs(CRS)
 ## exclude small areas
-larger_gaps = all_gaps[all_gaps.area > 100].copy()
-small_gaps = all_gaps = all_gaps[all_gaps.area < 100].copy()
+larger_gaps = all_gaps[all_gaps.area > 5000].copy()
+small_gaps = all_gaps = all_gaps[all_gaps.area < 5000].copy()
 
 ## make one geometry
 LARGER_GAPS = larger_gaps.union_all()

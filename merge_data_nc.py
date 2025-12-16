@@ -22,8 +22,8 @@ ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/"
 
 windthrows = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
                            "Coherence_VI_Krtiny/"
-                           "shapefiles/gaps.gpkg", layer = "gaps_selected")
-windthrows['geometry'] = windthrows['geometry'].buffer(200)
+                           "shapefiles/gaps.gpkg", layer = "AOIs")
+
 
 
 # Sentinel-1
@@ -33,8 +33,8 @@ s1_full =  xr.load_dataset(ROOT + "coherence_backscatter_data/netCDF/"
     .rename({'gamma0_VV_dB':'VV', 'gamma0_VH_dB':'VH'})\
         .drop_vars(['gamma0_VV','gamma0_VH'])
 CRS = s1_full.spatial_ref.attrs['crs_wkt']
-#s1_full = s1_full.assign_coords(x = (s1_full.x.values - 30))
-        
+s1_full = s1_full.assign_coords(x = (s1_full.x.values - 30))
+
 s1_full = s1_full\
     .rio.write_crs(CRS)
 np.diff(s1_full.x)
@@ -95,10 +95,10 @@ conc = conc.rio.write_crs(s1_full.spatial_ref.attrs['crs_wkt'])\
     .rio.reproject(s1_full.spatial_ref.attrs['crs_wkt'])
 
 conc = conc.assign_coords(time = pd.to_timedelta(conc['time'] - np.datetime64("2024-06-21")))
-
+del coh_12, coh_24, coh_36, coherence_full, s1_full, s2_full
 # %%
 
-month_before = pd.to_timedelta(-4, unit = 'W')
+month_before = pd.to_timedelta(-6, unit = 'W')
 day_0 = pd.to_timedelta(0, unit = 'd')
 month_after = pd.to_timedelta(4, unit = 'W')
 
@@ -110,6 +110,8 @@ Diffs["WI"] = Diffs['VV'] + Diffs['VH']
 
 Diffs["WI"].sum(dim = 'time').plot()
 plt.show()
+
+del conc
 # %% assign TN and TP
 df_list = []
 
@@ -172,13 +174,14 @@ df.columns.levels[0]
 vars_selected = ['coh_12','coh_24','coh_36',  
                  'VV', 'VH', 'WI',
                  'NDVI', 'B4', 'B8']
+
 fig, ax = plt.subplot_mosaic([['VV', 'coh_12', 'B4'],
                               ['VH', 'coh_24', 'B8'],
                               ['WI','coh_36', 'NDVI']], figsize= (8,10), constrained_layout = True)
 
 for VAR in vars_selected:
     
-    df_VAR = df.loc[:,VAR].stack().to_frame(name = VAR).reset_index()
+    df_VAR = df.loc[ix[:,'test_BYC.tif'],VAR].stack().to_frame(name = VAR).reset_index()
 
     
     sns.boxplot(df_VAR, x = 'time', y = VAR, hue = 'Gap', showfliers = False, ax = ax[VAR])
@@ -206,12 +209,12 @@ cols_s2 = ['NDVI'] #'B3','B4','B5','B8A','B11','B12',
 cols_s1 = ['WI', 'VH','VV'] #'Rc','RVI',
 cols_coherence = ['coh_12', 'coh_24', 'coh_36'] #,
 
-sce_data = {'s1':cols_s1,
-            'coherence':cols_coherence,
+sce_data = {'coherence':cols_coherence,
+            's1':cols_s1,
            's1+coherence':cols_s1+cols_coherence,
-           's2':cols_s2,
-           #'s1+s2': cols_s1 + cols_s2,
-           #'s1+s2+coherence': cols_s1+cols_s2+cols_coherence
+           #'s2':cols_s2,
+           #'s2+s1': cols_s1 + cols_s2,
+           #'s2+coherence': cols_s1+cols_s2+cols_coherence
            }
 
 sce = pd.DataFrame({'cols': sce_data.values()}, index=sce_data.keys())
@@ -225,77 +228,91 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-results = []
+tests = []
 output_settings = []
 
 for Setting in sce.index:
-    Setting
+
     output_aois = []
 
-    for AOI in df.index.levels[1]:
-        
-        cols = sce.loc[Setting,'cols']
-        
-        Partition = df.reset_index()['AOI'].isin([AOI]).values
-        Partition.sum()
+    cols = sce.loc[Setting,'cols']
+    print(cols)
+    
+    Partition = df.reset_index()['AOI'].isin(['train.tif']).values
+    Partition.sum()
 
-        test = df.loc[Partition,ix[cols, day_0:]].dropna(axis = 1, thresh = 0.8).dropna().copy()
-        train = df.loc[~Partition,ix[cols, day_0:]].dropna(axis = 1, thresh = 0.8).dropna().copy()
+    train = df.loc[Partition,ix[cols, day_0:]].dropna(axis = 1, thresh = 0.8).dropna().copy()
+    test = df.loc[~Partition,ix[cols, day_0:]].dropna(axis = 1, thresh = 0.8).dropna().copy()
+    
+    if np.any(test.reset_index(['Gap','AOI']).index.isin(train.reset_index(['Gap','AOI']).index)):
+        print("OVERLAPPING PIXELS")
+    
+    y = train.reset_index().loc[:,'Gap'].values.flatten()
+    X = train.loc[:,cols]
+
+    pos_weight = df.groupby('Gap').size()[False] / df.groupby('Gap').size()[True]
+    weights = np.where(y, pos_weight, 1)
+            
+    pipe = Pipeline([('scaler',StandardScaler()),
+                     ('poly', PolynomialFeatures()),
+                     ('model',model(random_state = 1, solver = 'auto'))]) #, scale_pos_weight = pos_weight
+
+    model_fit = pipe.fit(X = X.to_numpy(), y = y, model__sample_weight = weights)
+    test['pred_' + Setting] = model_fit.predict(test.loc[:,cols])
+    
+    tests.append(test)
+    
+    del train, test, y, X, pos_weight, weights, pipe, model_fit
+
+Test = pd.concat(tests, axis=1)
+Test.index = Test.index.remove_unused_levels()
+
+# %% validation metrics
+
+from sklearn.metrics import matthews_corrcoef, precision_score
+
+results_val = []
+
+for Setting in sce.index:
+    for AOI in Test.index.levels[1].values:
         
-        if np.any(test.reset_index(['Gap','AOI']).index.isin(train.reset_index(['Gap','AOI']).index)):
-            print("OVERLAPPING PIXELS")
-        
-        y = train.reset_index().loc[:,'Gap'].values.flatten()
-        X = train.loc[:,cols]
+        y_true = np.array(Test.loc[ix[:,AOI],:].index.get_level_values('Gap'), dtype = np.bool_)
+        y_pred = np.array(Test.loc[ix[:,AOI],"pred_" + Setting].values.flatten(), dtype = np.bool_)
+            
+        F1 = f1_score(y_true = y_true, y_pred = y_pred, zero_division = 0)
+        F05 = fbeta_score(y_true = y_true, y_pred = y_pred, beta = 0.5, zero_division = 0)
+        Precision = precision_score(y_true = y_true, y_pred = y_pred, zero_division = 0)
+        MCC = matthews_corrcoef(y_true = y_true, y_pred = y_pred)
+    
+        results_val.append({'setting':Setting,
+                        'test_area':AOI,
+                        'F1':F1,
+                        'F05': F05,
+                        'Precision':Precision,
+                        'MCC':MCC})
 
-        pos_weight = df.groupby('Gap').size()[False] / df.groupby('Gap').size()[True] * 0.75
-        
-        weights = X.shape[0] / np.sqrt(X.groupby('Gap').transform("size").values)
-                
-        pipe = Pipeline([('scaler',StandardScaler()),
-                         ('poly', PolynomialFeatures()),
-                         ('model',model(random_state = 1))]) #, scale_pos_weight = pos_weight
+VAL = pd.DataFrame(results_val).set_index(['setting','test_area'])
+VAL.columns.name = 'Metric'
 
-        model_fit = pipe.fit(X = X.to_numpy(), y = y, model__sample_weight = weights)
-        test['pred_' + Setting] = model_fit.predict(test.loc[:,cols])
-
-        output_aois.append(test)
-                
-        F1 = f1_score(y_true = test.reset_index()['Gap'], y_pred = test['pred_' + Setting], zero_division = 0)
-        F05 = fbeta_score(y_true = test.reset_index()['Gap'], y_pred = test['pred_' + Setting], beta = 0.5, zero_division = 0)
-        ACC = accuracy_score(y_true = test.reset_index()['Gap'], y_pred = test['pred_' + Setting])
-        
-        results.append({'setting':Setting,'test_area':AOI,'F1':F1, 'F05': F05, 'ACC':ACC})
-
-        
-    output_settings.append(pd.concat(output_aois))
-
-     
-output = pd.concat(output_settings, axis = 1).sort_index()
-
-Res = pd.DataFrame(results)
-sns.boxplot(Res, x = 'setting', y = 'F1')
+sns.boxplot(VAL.stack(level = 'Metric').to_frame(name = "value"), x = 'setting', y = 'value', hue = 'Metric')
 plt.show()
 
 from scipy.stats import ttest_rel
 
-Res.set_index('setting', inplace = True)
-Res.loc['s1+coherence','F1'].values
-pval = str(ttest_rel(Res.loc['s1+coherence','F1'].values,
-          Res.loc['s1','F1'].values).pvalue)[:5]
+print('F05', VAL.groupby('setting')['F05'].describe())
+print('F1', VAL.groupby('setting')['F1'].describe())
 
-
-print(Res.groupby('setting')['F1'].describe())
+pval = str(ttest_rel(VAL.loc['s1+coherence','F1'].values,
+          VAL.loc['s1','F1'].values).pvalue)[:5]
 print('Diff S1 vs. S1+coh.:', pval)
-print('F1 mean:', Res['F05'].mean())
+print('F1 mean:', VAL['F1'].mean())
+print('F05 mean:', VAL['F05'].mean())
 
 # %%
-"""
-for AOI in output.index.levels[1]:
-    out = output.loc[ix[:,AOI],:].copy().sort_index()
-    
-    out.reset_index(['Gap','AOI'])
+Test = Test.sort_index()
 
+for AOI in Test.index.levels[1]:
+    out = Test.loc[ix[:,AOI],:].copy()
     out = out.loc[:,out.droplevel(1, axis = 1).columns.str.startswith('pred')].droplevel(1,axis = 1).reset_index(['Gap','AOI']).drop(columns = 'AOI')
 
     out = out.astype(np.bool_).astype(int)
@@ -307,24 +324,24 @@ for AOI in output.index.levels[1]:
             .rio.write_crs(CRS)\
                 .rio.reproject(4326)
     
-    fig, ax = plt.subplot_mosaic([['Gap','S2'],
+    fig, ax = plt.subplot_mosaic([['Gap','coh'],
                                   ['S1', 'coh_S1']], figsize = (12,10))
                 
     ds['Gap'].plot(ax = ax['Gap'])
-    ds['pred_s2'].plot(ax = ax['S2'])
+    ds['pred_coherence'].plot(ax = ax['coh'])
     ds['pred_s1'].plot(ax = ax['S1'])
     ds['pred_s1+coherence'].plot(ax = ax['coh_S1'])
     
     ax['Gap'].set_title('Gap ground-truth')
-    ax['S2'].set_title('Pred.: NDWI')
+    ax['coh'].set_title('Pred.: coherence')
     ax['S1'].set_title('Pred.: WI =delta(VV+VH')
     ax['coh_S1'].set_title('Pred.: WI+Coherence')
     plt.show()
     
     
     
-    ds.rio.to_raster(ROOT + "preds/" + AOI)
+    #ds.rio.to_raster(ROOT + "preds/" + AOI)
     
                     
     #ds.to_netcdf("D:/" + AOI, engine= 'h5netcdf')
- """   
+  

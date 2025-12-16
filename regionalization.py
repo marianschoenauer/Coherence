@@ -13,8 +13,8 @@ import xarray as xr
 import rioxarray as rio
 import pandas as pd
 ix = pd.IndexSlice
-
-CRS =5514
+import numpy as np
+CRS =25833
 
 ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/"
 "IGA Team - UFE Wind Throw - General/GIS/")
@@ -26,6 +26,11 @@ PlanetScope = rio.open_rasterio(ROOT + "forest/canopy/"
     .squeeze()\
         .rio.reproject(CRS)\
             .rename("PlanSco")
+## replace 255 by np.nan. when where is applied to xarray, the condition is 
+## inverse
+PlanetScope = PlanetScope.where(PlanetScope != 255., np.nan)
+PlanetScope.attrs["_FillValue"] = np.nan
+PlanetScope.plot()
 """
 def read_rast(path):
     '''reads in netCDF rastera and reprojects it to reference'''
@@ -88,8 +93,8 @@ pd.Series(stack['LT'].values.flatten()).value_counts()
 stack.to_netcdf('D:/stack_rasters_soil.nc')
 """
 # %% get stack
-import numpy as np
 
+"""
 st = xr.load_dataset('D:/stack_rasters_soil.nc')\
     .rio.write_crs(CRS)
 
@@ -98,7 +103,7 @@ for var in ['LT', 'TYP', 'SUBTYP']:
         .reshape(st[var].shape)
 
     st[var] = (['x','y'], values)
-    
+"""
 
 # %% clustering
 import os, glob
@@ -112,30 +117,36 @@ for path in glob.glob("D:/OneDrive - Mendelova univerzita v Brně/"
 
 AOIs = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
                            "Coherence_VI_Krtiny/"
-                           "shapefiles/gaps.gpkg", layer = "gaps_selected").to_crs(CRS)
+                           "shapefiles/gaps.gpkg", layer = "AOIs")\
+    .to_crs(CRS)\
+        .set_index('AOI')
 
 all_gaps = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
                            "Coherence_VI_Krtiny/"
-                           "shapefiles/gaps.gpkg", layer = "canopy_diffs").to_crs(CRS)
+                           "shapefiles/gaps.gpkg", layer = "canopy_diffs")\
+    .to_crs(CRS)
+## exclude small areas
+one_pixel_coherence = 40*40
 
-ALL_GAPS = all_gaps.union_all()
+larger_gaps = all_gaps[all_gaps.area > one_pixel_coherence*2].copy()
+small_gaps = all_gaps = all_gaps[all_gaps.area < one_pixel_coherence*2].copy()
+
+## make one geometry
+
+LARGER_GAPS = larger_gaps.union_all()
+SMALL_GAPS = small_gaps.union_all()
 
 # Loop through AOIs
 for Area, row in AOIs.iterrows():
 
     print(f'Processing area {Area}...')
-    
+      
+    ds_AOI = PlanetScope.rio.clip(row)
 
+    TP = ds_AOI.rio.clip([LARGER_GAPS])
+    TN = ds_AOI.rio.clip([LARGER_GAPS], invert = True)
+    TN = TN.rio.clip([SMALL_GAPS], invert = True)
 
-    # Create buffer (300 m radius)
-    AOI = gpd.GeoDataFrame(geometry = [row.geometry.buffer(300)], crs = CRS)
-    ds_AOI = st['PlanSco'].rio.clip(AOI['geometry'])
-    
-    
-    TP = ds_AOI.rio.clip([ALL_GAPS], all_touched = True)
-    
-    TN = ds_AOI.rio.clip([ALL_GAPS], all_touched = True, invert = True)
-       
     TP.rio.to_raster("D:/OneDrive - Mendelova univerzita v Brně/"
                "Coherence_VI_Krtiny/clusters/TP/"+
                       str(Area)+".tif")

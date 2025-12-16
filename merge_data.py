@@ -5,15 +5,15 @@ Created on Wed Nov 26 14:25:27 2025
 @author: Marian Schonauer
 """
 
+import numpy as np
+import matplotlib.pyplot as plt
 import glob
-import geopandas as gpd
+#import geopandas as gpd
 import xarray as xr
 import rioxarray as rio
 import pandas as pd
 ix = pd.IndexSlice
 import seaborn as sns
-import matplotlib.pyplot as plt
-import numpy as np
 
 ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/"
            "Coherence_VI_Krtiny/")

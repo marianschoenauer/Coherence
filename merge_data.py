@@ -4,7 +4,7 @@ Created on Wed Nov 26 14:25:27 2025
 
 @author: Marian Schonauer
 """
-
+import geopandas as gpd
 import numpy as np
 import matplotlib.pyplot as plt
 import glob

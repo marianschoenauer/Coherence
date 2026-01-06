@@ -22,7 +22,7 @@ conc = xr.load_dataset(ROOT + "conc.nc", engine = "h5netcdf")
 
 # %%
 
-month_before = pd.to_timedelta(-6, unit = 'W')
+month_before = pd.to_timedelta(-4, unit = 'W')
 day_0 = pd.to_timedelta(0, unit = 'd')
 month_after = pd.to_timedelta(4, unit = 'W')
 
@@ -129,7 +129,7 @@ cols_coherence = ['coh_12', 'coh_24', 'coh_36'] #,
 sce_data = {'coherence':cols_coherence,
             's1':cols_s1,
            's1+coherence':cols_s1+cols_coherence,
-           #'s2':cols_s2,
+           's2':cols_s2,
            #'s2+s1': cols_s1 + cols_s2,
            #'s2+coherence': cols_s1+cols_s2+cols_coherence
            }

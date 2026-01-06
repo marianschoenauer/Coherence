@@ -54,7 +54,7 @@ all_gaps = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
                            "shapefiles/gaps.gpkg", layer = "canopy_diffs")\
     .to_crs(CRS)
 ## exclude small areas
-one_pixel_coherence = 40*40
+one_pixel_coherence = 10*10
 
 larger_gaps = all_gaps[all_gaps.area > one_pixel_coherence*2].copy()
 small_gaps = all_gaps = all_gaps[all_gaps.area < one_pixel_coherence*2].copy()

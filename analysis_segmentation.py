@@ -29,8 +29,8 @@ conc = conc.assign(WI = conc['VV'] + conc['VH'])
 # %% setting
 
 cols_s2 = ['NDVI'] #'B3','B4','B5','B8A','B11','B12',
-cols_s1 = ['WI', 'VH','VV'] #'Rc','RVI',
-cols_coherence = ['coh_12', 'coh_24', 'coh_36'] #,
+cols_s1 = ['WI'] #'Rc','RVI',, 'VH','VV'
+cols_coherence = ['coh_12'] #,, 'coh_24', 'coh_36'
 
 sce_data = {'coherence':cols_coherence,
             's1':cols_s1,
@@ -43,7 +43,7 @@ sce_data = {'coherence':cols_coherence,
 sce = pd.DataFrame({'cols': sce_data.values()}, index=sce_data.keys())
 
 # %%
-Setting = 's1+coherence'
+Setting = 's1'
 cols = sce.loc[Setting,'cols']
 
 coh = conc[cols]
@@ -52,16 +52,16 @@ month_before = pd.to_timedelta(-4, unit = 'W')
 day_0 = pd.to_timedelta(0, unit = 'd')
 month_after = pd.to_timedelta(4, unit = 'W')
 
-
+weeks_after  = pd.to_timedelta(1, unit = 'W')
 
 
 Before = coh.sel({"time":slice(month_before, day_0)}).mean(dim = 'time')
-After = coh.sel({"time":slice(day_0, month_after)}).mean(dim = 'time')
+After = coh.sel({"time":slice(weeks_after, month_after)}).mean(dim = 'time')
 
 Mean = Before - After
 
 
-
+Mean = Mean.fillna(0)
 # %%
 
 if SEG:
@@ -159,9 +159,10 @@ df = df.reset_index()\
 
 # %% models
 
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import RidgeClassifier as model
 from sklearn.metrics import f1_score, fbeta_score
-#from xgboost import XGBClassifier
+from xgboost import XGBClassifier
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -198,7 +199,7 @@ pos_weight = df.groupby('Gap').size()[False] / df.groupby('Gap').size()[True]
 weights = np.where(y, pos_weight, 1)
 
 pipe = Pipeline([('scaler',StandardScaler()),
-                 ('poly', PolynomialFeatures()),
+                 #('poly', PolynomialFeatures()),
                  ('model',model(random_state = 1, solver = 'auto'))]) 
 #, scale_pos_weight = pos_weight
 

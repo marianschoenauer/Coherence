@@ -26,6 +26,10 @@ conc = xr.load_dataset(ROOT + "conc.nc", engine = "h5netcdf")
 
 conc = conc.assign(WI = conc['VV'] + conc['VH'])
 
+
+
+
+
 # %% setting
 
 cols_s2 = ['NDVI'] #'B3','B4','B5','B8A','B11','B12',
@@ -42,61 +46,77 @@ sce_data = {'coherence':cols_coherence,
 
 sce = pd.DataFrame({'cols': sce_data.values()}, index=sce_data.keys())
 
+del cols_s2, cols_s1, cols_coherence, sce_data
+
 # %%
-Setting = 's1'
-cols = sce.loc[Setting,'cols']
+DS = []
 
-coh = conc[cols]
+for Setting, cols in sce.iterrows():    
+    coh = conc[cols['cols']]
+    
+    month_before = pd.to_timedelta(-4, unit = 'W')
+    day_0 = pd.to_timedelta(0, unit = 'd')
+    month_after = pd.to_timedelta(4, unit = 'W')
+    
+    delay  = pd.to_timedelta(12, unit = 'd')
+        
+    Before = coh.sel({"time":slice(month_before, day_0)}).mean(dim = 'time')
+    After = coh.sel({"time":slice(delay, month_after)}).mean(dim = 'time')
+    
+    Mean = (Before - After)
+    Mean = Mean.fillna(Mean.mean())
+    DS.append(Mean)
 
-month_before = pd.to_timedelta(-4, unit = 'W')
-day_0 = pd.to_timedelta(0, unit = 'd')
-month_after = pd.to_timedelta(4, unit = 'W')
+DS = xr.concat(DS, dim = sce.index)
+del conc, month_before, month_after, day_0, delay, Before
+del After, Mean, cols, coh, Setting
 
-weeks_after  = pd.to_timedelta(1, unit = 'W')
-
-
-Before = coh.sel({"time":slice(month_before, day_0)}).mean(dim = 'time')
-After = coh.sel({"time":slice(weeks_after, month_after)}).mean(dim = 'time')
-
-Mean = Before - After
-
-
-Mean = Mean.fillna(0)
 # %%
 
 if SEG:
-    list_da = []
-    coords = Mean.coords
     
-    for feat_name in list(Mean.data_vars):
+    DSseg = []
     
-        feat = feature.multiscale_basic_features(Mean[feat_name].values,
-                                          intensity=True,
-                                          edges=False,
-                                          texture=True,
-                                          sigma_min=1,
-                                          sigma_max=16,
-                                          num_sigma = 5)
+    for Setting in sce.index:
         
+        ds = DS.sel(concat_dim = Setting)
         
-        np_name = np.array(feat_name)
-        np_sigmas = np.array(["1","2","3","4","5"])
+        list_da = []
+        coords = ds.coords
         
-        feat_names = np.concatenate((
-            np_name + np.array(["intensity_"])+ np_sigmas,
-            np_name + np.array(["texture1_"])+ np_sigmas,
-            np_name + np.array(["texture2_"])+ np_sigmas))
+        for feat_name in list(ds.data_vars):
         
-        coords_i = coords.assign(feature = feat_names)
+            feat = feature.multiscale_basic_features(ds[feat_name].values,
+                                              intensity=True,
+                                              edges=False,
+                                              texture=True,
+                                              sigma_min=1,
+                                              sigma_max=16,
+                                              num_sigma = 5)
+            
+            np_name = np.array(feat_name)
+            np_sigmas = np.array(["1","2","3","4","5"])
+            
+            feat_names = np.concatenate((
+                np_name + np.array(["_intensity_"])+ np_sigmas,
+                np_name + np.array(["_texture1_"])+ np_sigmas,
+                np_name + np.array(["_texture2_"])+ np_sigmas))
+            
+            coords_i = coords.assign(feature = feat_names)
+            
+            
+            da_feat = xr.DataArray(feat, coords_i[['y','x','feature']].coords)
+            da_feat.name = feat_name
+
+            list_da.append(da_feat)        
         
+        ds = xr.merge(list_da)
         
-        da_feat = xr.DataArray(feat, coords_i[['y','x','feature']].coords)
-        da_feat.name = feat_name
+        DSseg.append(ds)
         
-        list_da.append(da_feat)
+    DS = xr.concat(DSseg, dim = sce.index)
     
-    
-    Mean = xr.merge(list_da)
+    del DSseg, Setting, ds, list_da, coords, feat, np_name, np_sigmas, feat_names, coords_i, da_feat
 
 # %% assign TN and TP
 df_list = []
@@ -121,8 +141,14 @@ for PATH in glob.glob(ROOT + "clusters/TN/*.tif"):
         .to_dataframe(name = 'PlanSco')\
                     .dropna()\
                         .droplevel('band')
+                        
+    
+    
+    
+    
+    
     if SEG:
-        sat = Mean.transpose('feature', 'y', 'x')\
+        sat = DS.transpose('concat_dim', 'feature', 'y', 'x')\
             .rio.reproject_match(TN)\
                 .to_dataframe()\
                     .unstack(0)\

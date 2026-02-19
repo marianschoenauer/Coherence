@@ -28,7 +28,13 @@ conc = xr.load_dataset(ROOT + "conc.nc", engine = "h5netcdf")
 
 conc = conc.assign(WI = conc['VV'] + conc['VH'])
 
-# %%
+    
+# %% drop variables
+
+conc.data_vars
+conc = conc.drop_vars(names = ['VH', 'B3', 'B4', 'B5', 'B8', 'B8A', 'B11', 
+                               'coh_24', 'coh_36'])
+# %% create Mean diffs
 
 month_before = pd.to_timedelta(-4, unit = 'W')
 day_0 = pd.to_timedelta(0, unit = 'd')
@@ -42,11 +48,54 @@ After = conc.sel({"time":slice(delay, month_after)}).mean(dim = 'time')
 Mean = (Before - After)
 ds = Mean = Mean.fillna(Mean.mean())
 
-del month_before, day_0, month_after, delay, Before, After, Mean
-del conc
+del month_before, month_after, delay, Before, After, Mean
+
+# %% plot Time Series
+
+TN = rio.open_rasterio(ROOT + "clusters/TN/train.tif")
+CRS = TN.spatial_ref.attrs['crs_wkt']
+
+TP = rio.open_rasterio(ROOT + "clusters/TP/train.tif")\
+    .rio.reproject_match(TN)
+
+tp = TP.where(TP != 255, np.nan)\
+    .to_dataframe(name = 'PlanSco')\
+                .dropna()\
+                    .droplevel('band')
+
+tn = TN.where(TN != 255, np.nan)\
+    .to_dataframe(name = 'PlanSco')\
+                .dropna()\
+                    .droplevel('band')
+
+sat = conc\
+    .rio.reproject_match(TN)\
+        .to_dataframe()\
+                .swaplevel()\
+                    .reset_index('time')\
+                        .sort_index()
+
+
+tp_sat = sat.loc[tp.index,:].assign(Gap = True)
+tn_sat = sat.loc[tn.index,:].assign(Gap = False)
+
+
+pl = pd.concat([tp_sat, tn_sat])
+
+
+# %%%
+pl = pl.groupby(['time','Gap']).mean()
+
+for col in pl.columns:
+     
+    
+    sns.lineplot(data = pl.reset_index(), x = 'time', y = col, hue = 'Gap')
+    plt.axvline(0)
+    plt.savefig(FIGS + 'ts_' + col + '.png', dpi = 300)
+    plt.show()
 
 # %%
-
+del conc
 if SEG:
 
     list_da = []
@@ -80,7 +129,7 @@ if SEG:
     
     ds = xr.merge(list_da)
 
-# %% assign TN and TP
+# %% labelling
 df_list = []
 
 for PATH in glob.glob(ROOT + "clusters/TN/*.tif"):
@@ -145,11 +194,13 @@ df = df.reset_index()\
 df = df.fillna(df.mean())
 # %% settings
 
-cols_s2 = ['NDVI','B8A','B11','B12',] #'B3','B4','B5'
-cols_s1 = ['WI', 'VH','VV', 'Rc'] #'Rc','RVI',
+cols_s2 = ['NDVI','B12',] #'B3','B4','B5','B8A','B11',
+cols_s1 = ['WI', 'VV', 'Rc'] #'Rc','RVI','VH',
 cols_coherence = ['coh_12'] #,, 'coh_24', 'coh_36'
+cols_coherence_3x3 = ['coh_VV_3x3', 'coh_VH_3x3']
 
 sce_data = {'coherence':cols_coherence,
+            'coherence_3x3': cols_coherence_3x3,
             's1':cols_s1,
            's1+coherence':cols_s1+cols_coherence,
            's2':cols_s2,
@@ -159,12 +210,12 @@ sce_data = {'coherence':cols_coherence,
 
 sce = pd.DataFrame({'cols': sce_data.values()}, index=sce_data.keys())
 
-del cols_s2, cols_s1, cols_coherence, sce_data
+del cols_s2, cols_s1, cols_coherence, sce_data, cols_coherence_3x3
 
 # %% model training
 
-from sklearn.ensemble import RandomForestClassifier as model
-from sklearn.linear_model import RidgeClassifier 
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import RidgeClassifier  as model
 from sklearn.metrics import f1_score, fbeta_score
 from xgboost import XGBClassifier
 from sklearn.preprocessing import PolynomialFeatures
@@ -206,17 +257,17 @@ for Setting, cols in sce.iterrows():
     test['pred_' + Setting] = model_fit.predict(test)
     tests.append(test.loc[:,['pred_' + Setting]])
     
-    #coef = pd.DataFrame({"weight": model_fit['model'].coef_},
-     #                   index = train.columns)\
-      #  .assign(Setting = Setting)
+    coef = pd.DataFrame({"weight": model_fit['model'].coef_},
+                        index = train.columns)\
+        .assign(Setting = Setting)
     
-    #coefs.append(coef)
+    coefs.append(coef)
     
     del train, test, y, X, pos_weight, weights, pipe, model_fit
     
 Test = pd.concat(tests, axis=1)
 Test.index = Test.index.remove_unused_levels()
-# %%
+# %% weights
 cc = pd.concat(coefs)\
     .set_index('Setting', append = True)\
         .reorder_levels([2,0,1])\
@@ -300,8 +351,8 @@ for AOI in Test.index.levels[1]:
                 .rio.reproject(4326)
 
     fig, ax = plt.subplot_mosaic([
-                                  ['Gap', 'Gap', 'coherence', 's1', 's1+coherence'],
-                                  ['Gap', 'Gap', 's2', 's2+s1','s2+coherence']], figsize = (12,6),
+                                  ['Gap', 'Gap', 'coherence', 'coherence_3x3', 's1', 's1+coherence'],
+                                  ['Gap', 'Gap', 's2', 's2+s1','s2+coherence', None]], figsize = (12,6),
                                  constrained_layout = True)
 
     ds['Gap'].plot(ax = ax['Gap'], add_colorbar = False)

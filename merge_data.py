@@ -26,7 +26,7 @@ windthrows = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
 
 
 
-# Sentinel-1
+#%%% Sentinel-1
 s1_full =  xr.load_dataset(ROOT + "coherence_backscatter_data/netCDF/"
                            "backscatter_stack_Krtiny_10m_2024_dB_32633.nc", 
                            engine = 'h5netcdf')\
@@ -43,7 +43,41 @@ xmin, ymin, xmax, ymax = windthrows.to_crs(CRS).total_bounds
 
 s1_full = s1_full.sel({'x':slice(xmin, xmax), 'y':slice(ymax,ymin)})
 
-# Sentinel-2
+ #%%%% calculate coherence
+
+
+for pol in ['VV', 'VH']:
+
+    vv = s1_full[pol]
+    times = vv.time.values
+    
+    for i in np.arange(times.size-1):
+        
+        t0, t1 = times[i], times[i+1]
+    
+        v1 = vv.sel(time=t0)
+        v2 = vv.sel(time=t1)
+        
+        # Compute local mean
+        mean1 = v1.rolling(y=3, x=3, center=True).mean()
+        mean2 = v2.rolling(y=3, x=3, center=True).mean()
+        
+        # Compute local covariance and variance
+        cov12 = ((v1 - mean1) * (v2 - mean2)).rolling(y=3, x=3, center=True).mean()
+        var1 = ((v1 - mean1)**2).rolling(y=3, x=3, center=True).mean()
+        var2 = ((v2 - mean2)**2).rolling(y=3, x=3, center=True).mean()
+        
+        # Local correlation coefficient
+        coherence = cov12 / np.sqrt(var1 * var2)
+        
+        coherence.name = 'coh_'+pol+'_3x3'
+        
+        coherence = coherence.expand_dims(dim = {'time':[t1]})
+    
+        
+        s1_full = xr.merge([s1_full, coherence])
+
+#%%% Sentinel-2
 s2_full =  xr.load_dataset(ROOT + "s2/"
                 "0.nc", engine = 'h5netcdf')
 np.diff(s2_full.x)
@@ -53,7 +87,7 @@ s2_full = s2_full\
         
 s2_full["NDVI"]  = (s2_full["B8"] - s2_full["B4"]) / (s2_full["B8"] + s2_full["B4"])
 
-# Coherence
+#%%% Coherence
 
 coherence_full =xr.load_dataset(ROOT + "coherence_backscatter_data/netCDF/"
                            "coherence_stack_Krtiny_10m_2024_32633.nc", 
@@ -81,7 +115,7 @@ coh_12 = coherence_baseline_days(12, coherence_full)
 coh_24 = coherence_baseline_days(24, coherence_full)
 coh_36 = coherence_baseline_days(36, coherence_full)
 
-
+# %% merge and export
 conc = xr.merge([s1_full, 
                   s2_full,
                   coh_12,coh_24,coh_36

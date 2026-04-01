@@ -16,124 +16,111 @@ ix = pd.IndexSlice
 import seaborn as sns
 
 ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/"
-           "Coherence_VI_Krtiny/")
+           "Coherence_VI_Krtiny/satellite_data/")
 
-# %% raster data
+# raster data
 
 windthrows = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
                            "Coherence_VI_Krtiny/"
                            "shapefiles/gaps.gpkg", layer = "AOIs")
 
+A = 'SLP'
+for A in ['SLP','USA']: 
+    # Sentinel-1
 
-
-#%%% Sentinel-1
-s1_full =  xr.load_dataset(ROOT + "coherence_backscatter_data/netCDF/"
-                           "backscatter_stack_Krtiny_10m_2024_dB_32633.nc", 
-                           engine = 'h5netcdf')\
-    .rename({'gamma0_VV_dB':'VV', 'gamma0_VH_dB':'VH'})\
-        .drop_vars(['gamma0_VV','gamma0_VH'])
-CRS = s1_full.spatial_ref.attrs['crs_wkt']
-s1_full = s1_full.assign_coords(x = (s1_full.x.values - 30))
-
-s1_full = s1_full\
-    .rio.write_crs(CRS)
-np.diff(s1_full.x)
-
-xmin, ymin, xmax, ymax = windthrows.to_crs(CRS).total_bounds
-
-s1_full = s1_full.sel({'x':slice(xmin, xmax), 'y':slice(ymax,ymin)})
-
- #%%%% calculate coherence
-
-
-for pol in ['VV', 'VH']:
-
-    vv = s1_full[pol]
-    times = vv.time.values
+    '''
+    path_backscatter = glob.glob(ROOT + "S1_backscatter/"+A+"*")[0]
+    s1_full =  xr.load_dataset(path_backscatter, 
+                               engine = 'h5netcdf')\
+        .rename({'gamma0_VV_dB':'VV', 'gamma0_VH_dB':'VH'})\
+            .drop_vars(['gamma0_VV','gamma0_VH'])
+    CRS = s1_full.spatial_ref.attrs['crs_wkt']
+    s1_full = s1_full.assign_coords(x = (s1_full.x.values - 30))
     
-    for i in np.arange(times.size-1):
-        
-        t0, t1 = times[i], times[i+1]
+    s1_full = s1_full\
+        .rio.write_crs(CRS)
+    np.diff(s1_full.x)
     
-        v1 = vv.sel(time=t0)
-        v2 = vv.sel(time=t1)
-        
-        # Compute local mean
-        mean1 = v1.rolling(y=3, x=3, center=True).mean()
-        mean2 = v2.rolling(y=3, x=3, center=True).mean()
-        
-        # Compute local covariance and variance
-        cov12 = ((v1 - mean1) * (v2 - mean2)).rolling(y=3, x=3, center=True).mean()
-        var1 = ((v1 - mean1)**2).rolling(y=3, x=3, center=True).mean()
-        var2 = ((v2 - mean2)**2).rolling(y=3, x=3, center=True).mean()
-        
-        # Local correlation coefficient
-        coherence = cov12 / np.sqrt(var1 * var2)
-        
-        coherence.name = 'coh_'+pol+'_3x3'
-        
-        coherence = coherence.expand_dims(dim = {'time':[t1]})
+    xmin, ymin, xmax, ymax = windthrows.to_crs(CRS).total_bounds
     
+    s1_full = s1_full.sel({'x':slice(xmin, xmax), 'y':slice(ymax,ymin)})
+    '''
+       
+    s1_full =  xr.load_dataset(ROOT+'s1/'+A+'.nc', 
+                               engine = 'h5netcdf')
+    
+    CRS = s1_full.spatial_ref.attrs['crs_wkt']
+    
+    s1_full = s1_full\
+        .rio.write_crs(CRS)
+    np.diff(s1_full.x)
+    
+    xmin, ymin, xmax, ymax = windthrows.to_crs(CRS).total_bounds
+    
+    s1_full = s1_full.sel({'x':slice(xmin, xmax), 'y':slice(ymax,ymin)})   
+    
+    # Sentinel-2
+    s2_full =  xr.load_dataset(ROOT + "s2/"
+                    +A+".nc", engine = 'h5netcdf')
+    
+    np.diff(s2_full.x)
+    s2_full = s2_full\
+        .rio.write_crs(s2_full.spatial_ref.attrs['crs_wkt'])\
+            .rio.reproject_match(s1_full)
+            
+    s2_full["NDVI"]  = (s2_full["B8"] - s2_full["B4"]) / (s2_full["B8"] + s2_full["B4"])
+    
+    # Coherence
+    '''
+    path_coherence = glob.glob(ROOT + "S1_coherence/"+A+"*")[0]
+    
+    coherence_full =xr.load_dataset(path_coherence, 
+                               engine = 'h5netcdf')
+    
+    #coherence_full = coherence_full.assign_coords(x = (coherence_full.x.values - 30))
+    
+    coherence_full = coherence_full\
+        .rio.write_crs(coherence_full.spatial_ref.attrs['spatial_ref'])\
+            .rio.reproject_match(s1_full)
+    
+    
+    def coherence_baseline_days(days, Dataset):
+        NAME = "coh_" + str(days)
+        coh_X = Dataset.sel(pair=Dataset.baseline_days == days)\
+            .rename({'coherence':NAME})
+        np.diff(coh_X.x)
+        coh_X = coh_X.assign_coords(pair = coh_X.slave_time.values)
+        coh_X = coh_X.rename({'pair':'time'})
+        coh_X = coh_X.drop_vars(['baseline_days', 'pair_name', 'master_time', 'slave_time'])
+        return coh_X
+    
+    coh_12 = coherence_baseline_days(12, coherence_full)
+    coh_24 = coherence_baseline_days(24, coherence_full)
+    coh_36 = coherence_baseline_days(36, coherence_full)
+    '''
+    # merge and export
+    conc = xr.merge([s1_full, 
+                      s2_full,
+                      #coh_12,#coh_24,coh_36
+                      ]).sortby(['x','y','time'])
+    
+    conc['Rc'] = conc['VH'] - conc['VV']
+    
+    conc = conc.drop_vars('spatial_ref')
+    conc = conc.rio.write_crs(s1_full.spatial_ref.attrs['crs_wkt'])\
+        .rio.reproject(s1_full.spatial_ref.attrs['crs_wkt'])
         
-        s1_full = xr.merge([s1_full, coherence])
-
-#%%% Sentinel-2
-s2_full =  xr.load_dataset(ROOT + "s2/"
-                "0.nc", engine = 'h5netcdf')
-np.diff(s2_full.x)
-s2_full = s2_full\
-    .rio.write_crs(s2_full.spatial_ref.attrs['crs_wkt'])\
-        .rio.reproject_match(s1_full)
+    if A == 'SLP':
+        event = np.datetime64("2024-06-21")
+    if A == 'USA':
+        event = np.datetime64("2018-03-01")
         
-s2_full["NDVI"]  = (s2_full["B8"] - s2_full["B4"]) / (s2_full["B8"] + s2_full["B4"])
-
-#%%% Coherence
-
-coherence_full =xr.load_dataset(ROOT + "coherence_backscatter_data/netCDF/"
-                           "coherence_stack_Krtiny_10m_2024_32633.nc", 
-                           engine = 'h5netcdf')
-
-#coherence_full = coherence_full.assign_coords(x = (coherence_full.x.values - 30))
-  
-
-coherence_full = coherence_full\
-    .rio.write_crs(coherence_full.spatial_ref.attrs['spatial_ref'])\
-        .rio.reproject_match(s1_full)
-
-
-def coherence_baseline_days(days, Dataset):
-    NAME = "coh_" + str(days)
-    coh_X = Dataset.sel(pair=Dataset.baseline_days == days)\
-        .rename({'coherence':NAME})
-    np.diff(coh_X.x)
-    coh_X = coh_X.assign_coords(pair = coh_X.slave_time.values)
-    coh_X = coh_X.rename({'pair':'time'})
-    coh_X = coh_X.drop_vars(['baseline_days', 'pair_name', 'master_time', 'slave_time'])
-    return coh_X
-
-coh_12 = coherence_baseline_days(12, coherence_full)
-coh_24 = coherence_baseline_days(24, coherence_full)
-coh_36 = coherence_baseline_days(36, coherence_full)
-
-# %% merge and export
-conc = xr.merge([s1_full, 
-                  s2_full,
-                  coh_12,coh_24,coh_36
-                  ]).sortby(['x','y','time'])
-
-
-conc['Rc'] = conc['VH'] - conc['VV']
-
-conc = conc.drop_vars('spatial_ref')
-conc = conc.rio.write_crs(s1_full.spatial_ref.attrs['crs_wkt'])\
-    .rio.reproject(s1_full.spatial_ref.attrs['crs_wkt'])
-
-conc = conc.assign_coords(time = pd.to_timedelta(conc['time'] - np.datetime64("2024-06-21")))
-del coh_12, coh_24, coh_36, coherence_full, s1_full, s2_full
-
-
-
-conc = conc.drop_attrs()
-conc = conc.rio.write_crs(CRS)
-
-conc.to_netcdf(ROOT + "conc.nc", engine= "h5netcdf")
+    conc = conc.assign_coords(time = pd.to_timedelta(conc['time'] - event))
+    #del coh_12, coh_24, coh_36, coherence_full, 
+    del s1_full, s2_full
+    
+    conc = conc.drop_attrs()
+    conc = conc.rio.write_crs(CRS)
+    
+    print(ROOT +A+ "_conc.nc")
+    conc.to_netcdf(ROOT +A+ "_conc.nc", engine= "h5netcdf")

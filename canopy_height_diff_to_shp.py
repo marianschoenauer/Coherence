@@ -20,8 +20,6 @@ import numpy as np
 ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/"
            "Coherence_VI_Krtiny/")
 
-
-
 ds = rio.open_rasterio(ROOT + "canopy_height/Lidar_P95/diff_summer-winter2024.tif", masked = True)
 CRS = ds.spatial_ref.attrs['crs_wkt']
 
@@ -35,7 +33,6 @@ df =  ds.to_dataframe(name = 'diff').dropna().droplevel(0)
 df = df.loc[(df['diff']<-5) & (df['diff']>-50),:].reset_index()
 
 
-
 sp = gpd.GeoDataFrame(df['diff'], geometry=gpd.points_from_xy(df.x, df.y, crs = CRS))
 
 sp['geometry'] = sp.geometry.buffer((s/2)+0.01, cap_style = 'square')
@@ -47,5 +44,3 @@ sp = gpd.GeoDataFrame(geometry = [Union],crs = CRS)
 sp = sp.explode()
 
 sp.to_file(ROOT + "shapefiles/" + 'gaps.gpkg', layer = "canopy_diffs")
-
-

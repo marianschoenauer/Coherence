@@ -4,58 +4,58 @@ Created on Tue Dec 16 19:06:17 2025
 
 @author: Marian Schonauer
 """
+import glob
 import numpy as np
 import matplotlib.pyplot as plt
-import glob
 #import geopandas as gpd
 import xarray as xr
 import rioxarray as rio
 import pandas as pd
-ix = pd.IndexSlice
 import seaborn as sns
-from skimage import data, segmentation, feature, future
-from sklearn.ensemble import RandomForestClassifier
-from functools import partial
-
+from skimage import feature
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import matthews_corrcoef, precision_score, \
+    f1_score, fbeta_score
+#from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import RidgeClassifier  as model
+#from sklearn.linear_model import LogisticRegression
+#from sklearn.svm import SVC as model
+#from xgboost import XGBClassifier
+#from sklearn.preprocessing import PolynomialFeatures
+ix = pd.IndexSlice
 SEG = True
+
+A = 'SLP'
 
 ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/"
            "Coherence_VI_Krtiny/")
 
 FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 
-conc = xr.load_dataset(ROOT + "conc.nc", engine = "h5netcdf")
+conc = xr.load_dataset(ROOT + "satellite_data/"+A+"_conc.nc", engine = "h5netcdf")
 
 conc = conc.assign(WI = conc['VV'] + conc['VH'])
 
-    
+conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
+
 # %% drop variables
+conc = conc.drop_vars(['B4', 'B8'])
 
-conc.data_vars
-conc = conc.drop_vars(names = ['VH', 'B3', 'B4', 'B5', 'B8', 'B8A', 'B11', 
-                               'coh_24', 'coh_36'])
-# %% create Mean diffs
+#conc = conc.drop_vars(names = ['VH', 'B3', 'B4', 'B5', 'B8', 'B8A', 'B11',
+ #                              'coh_24', 'coh_36', 'coh_VV_3x3', 'coh_VH_3x3'])
 
-month_before = pd.to_timedelta(-4, unit = 'W')
-day_0 = pd.to_timedelta(0, unit = 'd')
-month_after = pd.to_timedelta(4, unit = 'W')
 
-delay  = pd.to_timedelta(12, unit = 'd')
-    
-Before = conc.sel({"time":slice(month_before, day_0)}).mean(dim = 'time')
-After = conc.sel({"time":slice(delay, month_after)}).mean(dim = 'time')
-
-Mean = (Before - After)
-ds = Mean = Mean.fillna(Mean.mean())
-
-del month_before, month_after, delay, Before, After, Mean
-
+#conc['WI'].isel(time = 0).rio.to_raster(ROOT + 'VV_usa.tif')
 # %% plot Time Series
 
-TN = rio.open_rasterio(ROOT + "clusters/TN/train.tif")
+Site = 'SLP_test_BYC.tif'
+Site = 'USA_test_5.tif'
+
+TN = rio.open_rasterio(ROOT + "clusters/TN/"+Site)
 CRS = TN.spatial_ref.attrs['crs_wkt']
 
-TP = rio.open_rasterio(ROOT + "clusters/TP/train.tif")\
+TP = rio.open_rasterio(ROOT + "clusters/TP/"+Site)\
     .rio.reproject_match(TN)
 
 tp = TP.where(TP != 255, np.nan)\
@@ -83,27 +83,39 @@ tn_sat = sat.loc[tn.index,:].assign(Gap = False)
 pl = pd.concat([tp_sat, tn_sat])
 
 
-# %%%
 pl = pl.groupby(['time','Gap']).mean()
 
-for col in pl.columns:
-     
-    
+for col in pl.columns: 
     sns.lineplot(data = pl.reset_index(), x = 'time', y = col, hue = 'Gap')
     plt.axvline(0)
     plt.savefig(FIGS + 'ts_' + col + '.png', dpi = 300)
     plt.show()
+# %% create Mean diffs
 
-# %%
+month_before = pd.to_timedelta(-4, unit = 'W')
+day_0 = pd.to_timedelta(0, unit = 'd')
+month_after = pd.to_timedelta(4, unit = 'W')
+
+delay  = pd.to_timedelta(7, unit = 'd')
+
+Before = conc.sel({"time":slice(month_before, day_0)}).mean(dim = 'time')
+After = conc.sel({"time":slice(delay, month_after)}).mean(dim = 'time')
+
+Mean = Before - After
+ds = Mean.fillna(Mean.mean())
+
+del month_before, month_after, delay, Before, After, Mean
+
+
+
+# %% Segmentation features
 del conc
 if SEG:
 
     list_da = []
     coords = ds.coords
-    
+
     for feat_name in list(ds.data_vars):
-        feat_name
-    
         feat = feature.multiscale_basic_features(ds[feat_name].values,
                                           intensity=True,
                                           edges=False,
@@ -111,28 +123,30 @@ if SEG:
                                           sigma_min=1,
                                           sigma_max=16,
                                           num_sigma = 5)
-        
+
         np_name = np.array(feat_name)
         np_sigmas = np.array(["1","2","3","4","5"])
-        
+
         feat_names = np.concatenate((
             np_name + np.array(["_intensity_"])+ np_sigmas,
             np_name + np.array(["_texture1_"])+ np_sigmas,
             np_name + np.array(["_texture2_"])+ np_sigmas))
-        
+
         coords_i = coords.assign(feature = feat_names)
 
         da_feat = xr.DataArray(feat, coords_i[['y','x','feature']].coords)
         da_feat.name = feat_name
 
-        list_da.append(da_feat) 
-    
+        list_da.append(da_feat)
+
     ds = xr.merge(list_da)
+
+#ds = ds.rio.write_crs(conc.spatial_ref.crs_wkt)
 
 # %% labelling
 df_list = []
 
-for PATH in glob.glob(ROOT + "clusters/TN/*.tif"):
+for PATH in glob.glob(ROOT + "clusters/TN/"+A+"*.tif"):
 
     AOI_name = PATH.replace(ROOT + "clusters/TN\\","")
     print(AOI_name)
@@ -152,8 +166,7 @@ for PATH in glob.glob(ROOT + "clusters/TN/*.tif"):
         .to_dataframe(name = 'PlanSco')\
                     .dropna()\
                         .droplevel('band')
-                            
-    
+
     if SEG:
         sat = ds.transpose('feature', 'y', 'x')\
             .rio.reproject_match(TN)\
@@ -161,7 +174,7 @@ for PATH in glob.glob(ROOT + "clusters/TN/*.tif"):
                     .unstack(0)\
                         .swaplevel()\
                             .sort_index()
-                        
+
     else:
         sat = ds.transpose('y', 'x')\
             .rio.reproject_match(TN)\
@@ -190,119 +203,131 @@ df = df.reset_index()\
         .sort_index()\
             .drop(columns = 'spatial_ref')\
                 .dropna(how = 'all', axis = 1)
-                
+
 df = df.fillna(df.mean())
 # %% settings
 
 cols_s2 = ['NDVI','B12',] #'B3','B4','B5','B8A','B11',
 cols_s1 = ['WI', 'VV', 'Rc'] #'Rc','RVI','VH',
 cols_coherence = ['coh_12'] #,, 'coh_24', 'coh_36'
-cols_coherence_3x3 = ['coh_VV_3x3', 'coh_VH_3x3']
 
-sce_data = {'coherence':cols_coherence,
-            'coherence_3x3': cols_coherence_3x3,
+sce_data = {#'coherence':cols_coherence,
             's1':cols_s1,
-           's1+coherence':cols_s1+cols_coherence,
+           #'s1+coherence':cols_s1+cols_coherence,
            's2':cols_s2,
            's2+s1': cols_s1 + cols_s2,
-           's2+coherence': cols_s1+cols_s2+cols_coherence
+           #'s2+coherence': cols_s2+cols_coherence
            }
 
 sce = pd.DataFrame({'cols': sce_data.values()}, index=sce_data.keys())
 
-del cols_s2, cols_s1, cols_coherence, sce_data, cols_coherence_3x3
+del cols_s2, cols_s1, cols_coherence, sce_data
 
 # %% model training
 
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import RidgeClassifier  as model
-from sklearn.metrics import f1_score, fbeta_score
-from xgboost import XGBClassifier
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
 
-tests = []
 output_settings = []
 
 output_aois = []
 
-Partition = df.reset_index()['AOI'].isin(['train.tif']).values
+#Partition = df.reset_index()['AOI'].isin([A+'_train.tif']).values
 
-coefs = []
-
+Tests = []
+Coefs = []
 for Setting, cols in sce.iterrows():
-   
-    train = df.loc[Partition,cols.iloc[0]].copy()
-    test = df.loc[~Partition,cols.iloc[0]].copy()
-    
-    train.columns.names = ['Feature', 'feature_seg']
+    cols
+    tests = []
+    coefs = []
+    for test_area in df.index.levels[1][:-1]:
+        
+        Partition = df.reset_index()['AOI'].isin([test_area]).values
 
-    if np.any(test.reset_index(['Gap','AOI']).index.isin(
-            train.reset_index(['Gap','AOI']).index)):
-        print("OVERLAPPING PIXELS")
+        train = df.loc[~Partition,cols.iloc[0]].copy()
+        test = df.loc[Partition,cols.iloc[0]].copy()
     
-    y = train.reset_index().loc[:,'Gap'].values.flatten()
-    X = train.to_numpy()
+        train.columns.names = ['Feature', 'feature_seg']
     
-    pos_weight = df.groupby('Gap').size()[False] / df.groupby('Gap').size()[True]
-    weights = np.where(y, pos_weight, 1)
+        if np.any(test.reset_index(['Gap','AOI']).index.isin(
+                train.reset_index(['Gap','AOI']).index)):
+            print("OVERLAPPING PIXELS")
     
-    pipe = Pipeline([('scaler',StandardScaler()),
-                     ('model',model(random_state = 1))]) 
-    #solver = 'auto', scale_pos_weight = pos_weight
+        y = train.reset_index().loc[:,'Gap'].values.flatten()
+        X = train.to_numpy()
     
-    model_fit = pipe.fit(X = X, y = y,
-                         model__sample_weight = weights)
-    test['pred_' + Setting] = model_fit.predict(test)
-    tests.append(test.loc[:,['pred_' + Setting]])
+        pos_weight = df.groupby('Gap').size()[False]/df.groupby('Gap').size()[True]
+        weights = np.where(y, pos_weight, 1)
+        """
+        model = LogisticRegression(
+                    penalty="elasticnet",
+                    solver="saga",      # must be 'saga' for elastic net
+                    l1_ratio=0.5        # 0 = ridge, 1 = lasso
+                )
+        """
+        pipe = Pipeline([('scaler',StandardScaler()),
+                         ('model',model(random_state = 1,\
+                                        solver = 'svd'))]) #(random_state = 1)
+        #cale_pos_weight = pos_weights
     
-    coef = pd.DataFrame({"weight": model_fit['model'].coef_},
-                        index = train.columns)\
-        .assign(Setting = Setting)
+        model_fit = pipe.fit(X = X, y = y,
+                             model__sample_weight = weights)
+        test['pred_' + Setting] = model_fit.predict(test)
+        
+        tests.append(test.loc[:,['pred_' + Setting]])
     
-    coefs.append(coef)
+        coef = pd.DataFrame({"weight": model_fit['model'].coef_.flatten()},
+                            index = train.columns)\
+            .assign(Setting = Setting, test_area = test_area)\
+                .set_index(['Setting','test_area'], append = True)
     
-    del train, test, y, X, pos_weight, weights, pipe, model_fit
+        coefs.append(coef)
     
-Test = pd.concat(tests, axis=1)
+        del train, test, y, X, pos_weight, weights, pipe, model_fit
+        
+    Tests.append(pd.concat(tests, axis = 0))
+    Coefs.append(pd.concat(coefs, axis = 0))
+
+Test = pd.concat(Tests, axis=1)
+Coef = pd.concat(Coefs, axis = 0)
+
+
 Test.index = Test.index.remove_unused_levels()
+
+
+
 # %% weights
-cc = pd.concat(coefs)\
-    .set_index('Setting', append = True)\
+
+coefs = Coef.groupby(['Feature' ,'feature_seg' ,   'Setting']).mean()
+
+cc = coefs\
         .reorder_levels([2,0,1])\
             .sort_index()
 
 cc.unstack('Setting').to_excel(TABS + 'model_weights.xlsx')
-# %% validation metrics
 
-from sklearn.metrics import matthews_corrcoef, precision_score
+# %% validation metrics
 
 results_val = []
 
 for (aoi), group in Test.groupby('AOI'):
-    
+
     y_true = group.reset_index(['Gap'])['Gap'].values
-    
+
     for Setting in group.columns:
-        Setting
-        
         y_pred = group.loc[:,Setting].values
-        
+
         F1 = f1_score(y_true = y_true, y_pred = y_pred, zero_division = 0)
         F05 = fbeta_score(y_true = y_true, y_pred = y_pred, beta = 0.5, \
                           zero_division = 0)
         Precision = precision_score(y_true = y_true, y_pred = y_pred, \
                                     zero_division = 0)
         MCC = matthews_corrcoef(y_true = y_true, y_pred = y_pred)
-        
+
         results_val.append({'setting':Setting[0][5:],
                         'test_area':aoi,
                         'F1':F1,
                         'F05': F05,
                         'Precision':Precision,
-                        'MCC':MCC})
-    
+                        'MCC':MCC})    
 
 VAL = pd.DataFrame(results_val).set_index(['setting','test_area'])\
     .sort_index()
@@ -313,33 +338,47 @@ sns.boxplot(VAL.stack(level = 'Metric').to_frame(name = "value"), \
 plt.savefig(FIGS + 'val_metrics_boxplot.png')
 plt.show()
 
-from scipy.stats import ttest_rel
+summary = VAL.groupby('setting')['F1'].describe()\
+    .sort_values('mean', ascending = False)
+    
+print('F1', summary)
 
-#print('F05', VAL.groupby('setting')['F05'].describe())
-print('F1', VAL.groupby('setting')['F1'].describe())
+best_set = summary['mean'].idxmax()
 
 VAL.to_excel(ROOT+"Manuscript/tables/val_metrics.xlsx")
 
 # %%
+for best_set in summary['mean'].index:
+    pl = cc.loc[best_set,:].sort_values('weight').reset_index()
+    
+    sns.barplot(pl,
+        x = 'weight',
+        y = 'feature_seg'
+        )
+    plt.title(best_set)
+    plt.show()
+# %%
 """
+from scipy.stats import ttest_rel
+
 pval = str(ttest_rel(VAL.loc['s1+coherence','F1'].values,
           VAL.loc['s1','F1'].values).pvalue)[:5]
 print('Diff S1 vs. S1+coh.:', pval)
 print('F1 mean:', VAL['F1'].mean())
 print('F05 mean:', VAL['F05'].mean())
 """
-# %%
+# %% print prediction maps
 Test = Test.sort_index()
 
 for AOI in Test.index.levels[1]:
     out = Test.loc[ix[:,AOI],:].copy()
-    
-    if SEG:
-        out = out.loc[:,out.droplevel(1, axis = 1).columns.str.startswith('pred')]\
-            .droplevel(1,axis = 1).reset_index(['Gap','AOI']).drop(columns = 'AOI')
-    else:
-        out = out.loc[:,out.columns.str.startswith('pred')]\
-            .reset_index(['Gap','AOI']).drop(columns = 'AOI')
+
+    #if SEG:
+    out = out.loc[:,out.droplevel(1, axis = 1).columns.str.startswith('pred')]\
+        .droplevel(1,axis = 1).reset_index(['Gap','AOI']).drop(columns = 'AOI')
+    #else:
+     #   out = out.loc[:,out.columns.str.startswith('pred')]\
+      #      .reset_index(['Gap','AOI']).drop(columns = 'AOI')
 
     out = out.astype(np.bool_).astype(int)
 
@@ -351,25 +390,22 @@ for AOI in Test.index.levels[1]:
                 .rio.reproject(4326)
 
     fig, ax = plt.subplot_mosaic([
-                                  ['Gap', 'Gap', 'coherence', 'coherence_3x3', 's1', 's1+coherence'],
-                                  ['Gap', 'Gap', 's2', 's2+s1','s2+coherence', None]], figsize = (12,6),
+           ['Gap', 'Gap', 'coherence',  's1', 's1+coherence'],
+           ['Gap', 'Gap', 's2', 's2+s1','s2+coherence']], figsize = (12,6),
                                  constrained_layout = True)
 
     ds['Gap'].plot(ax = ax['Gap'], add_colorbar = False)
     ax['Gap'].set_title('ground truthing')
-    
+
     for Setting in sce.index:
-        Setting
-        
         ds['pred_' + Setting].plot(ax = ax[Setting], add_colorbar = False)
         ax[Setting].set_title(Setting)
         ax[Setting].set_yticks([])
         ax[Setting].set_xticks([])
-        
+
         F1 = VAL.loc[(Setting, AOI),"F1"].round(2)
-        ax[Setting].annotate('F1 = ' + str(F1), xy = (0.1,0.9), 
+        ax[Setting].annotate('F1 = ' + str(F1), xy = (0.1,0.9),
                              xycoords = 'axes fraction',
-                             bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
-        
+                 bbox={"facecolor":'white', "alpha":0.8, "edgecolor":'none'})
+
     fig.savefig(FIGS + AOI + ".png", dpi = 400)
-        

@@ -49,8 +49,8 @@ conc = conc.drop_vars(['B4', 'B8'])
 #conc['WI'].isel(time = 0).rio.to_raster(ROOT + 'VV_usa.tif')
 # %% plot Time Series
 
-Site = 'SLP_test_BYC.tif'
-Site = 'USA_test_5.tif'
+if A == 'SLP': Site = 'SLP_test_BYC1.tif' 
+else: Site = 'USA_test_5.tif'
 
 TN = rio.open_rasterio(ROOT + "clusters/TN/"+Site)
 CRS = TN.spatial_ref.attrs['crs_wkt']
@@ -105,8 +105,6 @@ Mean = Before - After
 ds = Mean.fillna(Mean.mean())
 
 del month_before, month_after, delay, Before, After, Mean
-
-
 
 # %% Segmentation features
 del conc
@@ -289,10 +287,7 @@ for Setting, cols in sce.iterrows():
 Test = pd.concat(Tests, axis=1)
 Coef = pd.concat(Coefs, axis = 0)
 
-
 Test.index = Test.index.remove_unused_levels()
-
-
 
 # %% weights
 

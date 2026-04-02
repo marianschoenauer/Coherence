@@ -33,11 +33,11 @@ ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
 
 AOIs = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
                            "Coherence_VI_Krtiny/"
-                           "shapefiles/gaps.gpkg", layer = "AOIs")\
+                           "shapefiles/gaps.gpkg", layer = "AOIs_3857")\
     .to_crs(CRS)\
         .set_index('AOI')
         
-A = 'SLP'#
+A = 'USA'#
 
 for A in ['SLP', 'USA']:
        
@@ -92,6 +92,8 @@ for A in ['SLP', 'USA']:
         print(f'Processing area {Area}...')
           
         ds_AOI = forestMask.rio.clip(row)
+        
+        ds_AOI.rio.crs
     
         TP = ds_AOI.rio.clip([LARGER_GAPS])
         TN = ds_AOI.rio.clip([LARGER_GAPS], invert = True)
@@ -102,6 +104,7 @@ for A in ['SLP', 'USA']:
         
         TP.plot(ax = ax[0])
         TN.plot(ax = ax[1])
+        plt.title(Area)
         plt.show()
     
         

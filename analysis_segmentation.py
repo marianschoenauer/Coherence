@@ -24,9 +24,8 @@ from sklearn.linear_model import RidgeClassifier  as model
 #from xgboost import XGBClassifier
 #from sklearn.preprocessing import PolynomialFeatures
 ix = pd.IndexSlice
-SEG = True
 
-A = 'SLP'
+A = 'ITA'
 
 ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/"
            "Coherence_VI_Krtiny/")
@@ -34,23 +33,17 @@ ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/"
 FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 
 conc = xr.load_dataset(ROOT + "satellite_data/"+A+"_conc.nc", engine = "h5netcdf")
-
+conc['VV'] = 10*np.log(conc['VV'])
+conc['VH'] = 10*np.log(conc['VH'])
 conc = conc.assign(WI = conc['VV'] + conc['VH'])
-
 conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
 
-# %% drop variables
-conc = conc.drop_vars(['B4', 'B8'])
-
-#conc = conc.drop_vars(names = ['VH', 'B3', 'B4', 'B5', 'B8', 'B8A', 'B11',
- #                              'coh_24', 'coh_36', 'coh_VV_3x3', 'coh_VH_3x3'])
-
-
-#conc['WI'].isel(time = 0).rio.to_raster(ROOT + 'VV_usa.tif')
 # %% plot Time Series
 
 if A == 'SLP': Site = 'SLP_test_BYC1.tif' 
-else: Site = 'USA_test_5.tif'
+if A == 'ITA': Site = 'ITA_test_5.tif'
+if A == 'GER': Site = 'GER_test_5.tif'
+if A == 'USA': Site = 'USA_test_0.tif'
 
 TN = rio.open_rasterio(ROOT + "clusters/TN/"+Site)
 CRS = TN.spatial_ref.attrs['crs_wkt']
@@ -75,26 +68,26 @@ sat = conc\
                     .reset_index('time')\
                         .sort_index()
 
-
 tp_sat = sat.loc[tp.index,:].assign(Gap = True)
 tn_sat = sat.loc[tn.index,:].assign(Gap = False)
 
-
 pl = pd.concat([tp_sat, tn_sat])
-
 
 pl = pl.groupby(['time','Gap']).mean()
 
+pl['days'] = pl.reset_index().time.dt.days.values
+
 for col in pl.columns: 
-    sns.lineplot(data = pl.reset_index(), x = 'time', y = col, hue = 'Gap')
+    sns.lineplot(data = pl.reset_index(), x = 'days', y = col, hue = 'Gap')
     plt.axvline(0)
-    plt.savefig(FIGS + 'ts_' + col + '.png', dpi = 300)
+    plt.savefig(FIGS + 'ts_' +A + col + '.png', dpi = 300)
     plt.show()
+    
 # %% create Mean diffs
 
 month_before = pd.to_timedelta(-4, unit = 'W')
 day_0 = pd.to_timedelta(0, unit = 'd')
-month_after = pd.to_timedelta(4, unit = 'W')
+month_after = pd.to_timedelta(8 if A == 'GER' else 4, unit = 'W')
 
 delay  = pd.to_timedelta(7, unit = 'd')
 
@@ -107,39 +100,37 @@ ds = Mean.fillna(Mean.mean())
 del month_before, month_after, delay, Before, After, Mean
 
 # %% Segmentation features
+
 del conc
-if SEG:
 
-    list_da = []
-    coords = ds.coords
+list_da = []
+coords = ds.coords
 
-    for feat_name in list(ds.data_vars):
-        feat = feature.multiscale_basic_features(ds[feat_name].values,
-                                          intensity=True,
-                                          edges=False,
-                                          texture=True,
-                                          sigma_min=1,
-                                          sigma_max=16,
-                                          num_sigma = 5)
+for feat_name in list(ds.data_vars):
+    feat = feature.multiscale_basic_features(ds[feat_name].values,
+                                      intensity=True,
+                                      edges=False,
+                                      texture=True,
+                                      sigma_min=1,
+                                      sigma_max=16,
+                                      num_sigma = 5)
 
-        np_name = np.array(feat_name)
-        np_sigmas = np.array(["1","2","3","4","5"])
+    np_name = np.array(feat_name)
+    np_sigmas = np.array(["1","2","3","4","5"])
 
-        feat_names = np.concatenate((
-            np_name + np.array(["_intensity_"])+ np_sigmas,
-            np_name + np.array(["_texture1_"])+ np_sigmas,
-            np_name + np.array(["_texture2_"])+ np_sigmas))
+    feat_names = np.concatenate((
+        np_name + np.array(["_intensity_"])+ np_sigmas,
+        np_name + np.array(["_texture1_"])+ np_sigmas,
+        np_name + np.array(["_texture2_"])+ np_sigmas))
 
-        coords_i = coords.assign(feature = feat_names)
+    coords_i = coords.assign(feature = feat_names)
 
-        da_feat = xr.DataArray(feat, coords_i[['y','x','feature']].coords)
-        da_feat.name = feat_name
+    da_feat = xr.DataArray(feat, coords_i[['y','x','feature']].coords)
+    da_feat.name = feat_name
 
-        list_da.append(da_feat)
+    list_da.append(da_feat)
 
-    ds = xr.merge(list_da)
-
-#ds = ds.rio.write_crs(conc.spatial_ref.crs_wkt)
+ds = xr.merge(list_da)
 
 # %% labelling
 df_list = []
@@ -165,19 +156,12 @@ for PATH in glob.glob(ROOT + "clusters/TN/"+A+"*.tif"):
                     .dropna()\
                         .droplevel('band')
 
-    if SEG:
-        sat = ds.transpose('feature', 'y', 'x')\
-            .rio.reproject_match(TN)\
-                .to_dataframe()\
-                    .unstack(0)\
-                        .swaplevel()\
-                            .sort_index()
-
-    else:
-        sat = ds.transpose('y', 'x')\
-            .rio.reproject_match(TN)\
-                .to_dataframe()\
-                    .swaplevel()
+    sat = ds.transpose('feature', 'y', 'x')\
+        .rio.reproject_match(TN)\
+            .to_dataframe()\
+                .unstack(0)\
+                    .swaplevel()\
+                        .sort_index()
 
     tp_sat = sat.loc[tp.index,:].assign(Gap = True, AOI = AOI_name)
     tn_sat = sat.loc[tn.index,:].assign(Gap = False, AOI = AOI_name)
@@ -195,6 +179,7 @@ df_nc = pd.concat(df_list)\
 del df_list, tp_sat, tn_sat, sat, TN, TP, tp, tn
 
 # %% set index
+
 df = df_nc.loc[~df_nc.index.duplicated()].copy()
 df = df.reset_index()\
     .set_index(['Gap', 'AOI','x', 'y'])\
@@ -203,18 +188,19 @@ df = df.reset_index()\
                 .dropna(how = 'all', axis = 1)
 
 df = df.fillna(df.mean())
+
 # %% settings
 
 cols_s2 = ['NDVI','B12',] #'B3','B4','B5','B8A','B11',
 cols_s1 = ['WI', 'VV', 'Rc'] #'Rc','RVI','VH',
 cols_coherence = ['coh_12'] #,, 'coh_24', 'coh_36'
 
-sce_data = {#'coherence':cols_coherence,
+sce_data = {'coherence':cols_coherence,
             's1':cols_s1,
-           #'s1+coherence':cols_s1+cols_coherence,
+           's1+coherence':cols_s1+cols_coherence,
            's2':cols_s2,
            's2+s1': cols_s1 + cols_s2,
-           #'s2+coherence': cols_s2+cols_coherence
+           's2+coherence': cols_s2+cols_coherence
            }
 
 sce = pd.DataFrame({'cols': sce_data.values()}, index=sce_data.keys())
@@ -222,7 +208,6 @@ sce = pd.DataFrame({'cols': sce_data.values()}, index=sce_data.keys())
 del cols_s2, cols_s1, cols_coherence, sce_data
 
 # %% model training
-
 
 output_settings = []
 
@@ -252,7 +237,7 @@ for Setting, cols in sce.iterrows():
         y = train.reset_index().loc[:,'Gap'].values.flatten()
         X = train.to_numpy()
     
-        pos_weight = df.groupby('Gap').size()[False]/df.groupby('Gap').size()[True]
+        pos_weight = train.groupby('Gap').size()[False]/train.groupby('Gap').size()[True]
         weights = np.where(y, pos_weight, 1)
         """
         model = LogisticRegression(
@@ -297,7 +282,7 @@ cc = coefs\
         .reorder_levels([2,0,1])\
             .sort_index()
 
-cc.unstack('Setting').to_excel(TABS + 'model_weights.xlsx')
+cc.unstack('Setting').to_excel(TABS + A+'model_weights.xlsx')
 
 # %% validation metrics
 
@@ -330,7 +315,7 @@ VAL.columns.name = 'Metric'
 
 sns.boxplot(VAL.stack(level = 'Metric').to_frame(name = "value"), \
             x = 'setting', y = 'value', hue = 'Metric')
-plt.savefig(FIGS + 'val_metrics_boxplot.png')
+plt.savefig(FIGS + A+ '_val_metrics_boxplot.png')
 plt.show()
 
 summary = VAL.groupby('setting')['F1'].describe()\
@@ -340,7 +325,7 @@ print('F1', summary)
 
 best_set = summary['mean'].idxmax()
 
-VAL.to_excel(ROOT+"Manuscript/tables/val_metrics.xlsx")
+VAL.to_excel(TABS+A+"val_metrics.xlsx")
 
 # %%
 for best_set in summary['mean'].index:
@@ -365,7 +350,18 @@ print('F05 mean:', VAL['F05'].mean())
 # %% print prediction maps
 Test = Test.sort_index()
 
+OUT = "D:\\OneDrive - Mendelova univerzita v Brně\\Coherence_VI_Krtiny\\preds\\"
+
+
+
+import os
+os.mkdir(OUT+A)
+
+
 for AOI in Test.index.levels[1]:
+    AOI
+    OUT_sub = OUT+A+'\\'+AOI.replace('.tif','')
+    os.mkdir(OUT_sub)
     out = Test.loc[ix[:,AOI],:].copy()
 
     #if SEG:
@@ -383,7 +379,13 @@ for AOI in Test.index.levels[1]:
         .sortby(['y','x'])\
             .rio.write_crs(CRS)\
                 .rio.reproject(4326)
+    
+    
+    for VAR in list(ds.data_vars):
+        ds[VAR].rio.to_raster(OUT_sub + '\\' + VAR + '.tif')
 
+
+    '''
     fig, ax = plt.subplot_mosaic([
            ['Gap', 'Gap', 'coherence',  's1', 's1+coherence'],
            ['Gap', 'Gap', 's2', 's2+s1','s2+coherence']], figsize = (12,6),
@@ -404,3 +406,4 @@ for AOI in Test.index.levels[1]:
                  bbox={"facecolor":'white', "alpha":0.8, "edgecolor":'none'})
 
     fig.savefig(FIGS + AOI + ".png", dpi = 400)
+    '''

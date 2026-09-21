@@ -9,6 +9,7 @@ import rioxarray as rio
 import pandas as pd
 import geopandas as gpd
 import numpy as np
+import seaborn as sns
 
 R = "D:/coherence/friederike/"
 
@@ -52,6 +53,10 @@ XY = pd.concat(XY).reset_index()
 # transform coordinates to GeodataFrame
 Points = gpd.points_from_xy(XY.x, XY.y).buffer(20).union_all()
 Points = gpd.GeoDataFrame(geometry = [Points], crs = 3857).explode()
+
+sns.histplot(Points.area)
+# remove small areas
+Points = Points.loc[Points.area>10000,:]
 
 # export
 R2 = "D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/shapefiles/"

@@ -24,23 +24,26 @@ for path in glob.glob("D:/OneDrive - Mendelova univerzita v Brně/"
                       "Coherence_VI_Krtiny/clusters/TP/*"):
     os.remove(path)
 
-
 # %% forest mask
-# %%% SLP
+
 CRS =3857
 ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
         "satellite_data/")
 
-AOIs = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
+GAPS = ("D:/OneDrive - Mendelova univerzita v Brně/"
                            "Coherence_VI_Krtiny/"
-                           "shapefiles/gaps.gpkg", layer = "AOIs_3857")\
+                           "shapefiles/gaps.gpkg")
+
+AOIs = gpd.read_file(GAPS, layer = "AOIs_3857")\
     .to_crs(CRS)\
         .set_index('AOI')
         
-A = 'USA'#
 
-for A in ['SLP', 'USA']:
-       
+gaps_conifer = gpd.read_file(GAPS, layer = "gap_in_conifers")\
+    .to_crs(CRS)
+
+for A in ['SLP', 'ITA', 'USA','GER',]:
+    A
     
     fm = xr.load_dataset(ROOT + 'DynWorld/'+A+'.nc', engine = 'h5netcdf')\
         .rio.write_crs(4326)\
@@ -52,21 +55,28 @@ for A in ['SLP', 'USA']:
     forestMask = fm.where(fm.label == 1)['label']\
         .squeeze()
         
+    forestMask = forestMask.rio.clip(gaps_conifer.geometry, invert = True).copy()
+    
+    forestMask.plot()
+        
     forestMask.rio.to_raster(ROOT+'DynWorld_'+A+'_1.tif')
         
     if A == 'SLP':
-        all_gaps = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
-                                   "Coherence_VI_Krtiny/"
-                                   "shapefiles/gaps.gpkg", layer = "canopy_diffs")\
+        all_gaps = gpd.read_file(GAPS, layer = "canopy_diffs")\
             .to_crs(CRS)
             
     if A == 'USA':
-        all_gaps = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
-                                   "Coherence_VI_Krtiny/"
-                                   "shapefiles/gaps.gpkg", layer = "usa")\
+        all_gaps = gpd.read_file(GAPS, layer = "usa")\
             .to_crs(CRS)
             
+    if A == 'ITA':
+        all_gaps = gpd.read_file(GAPS, layer = "Italy_windthrows")\
+            .to_crs(CRS)
     
+    if A == 'GER':      
+        all_gaps = gpd.read_file(GAPS, layer = "Germany_Friederike")\
+            .to_crs(CRS)
+            
     #1 	#397d49 	trees
     
     #  select TN and TP
@@ -76,10 +86,10 @@ for A in ['SLP', 'USA']:
     
     larger_gaps = all_gaps[all_gaps.area > one_pixel_coherence*2].copy()
     small_gaps = all_gaps[all_gaps.area < one_pixel_coherence*2].copy()
-    
+      
     ## make one geometry
     
-    LARGER_GAPS = larger_gaps.union_all()
+    LARGER_GAPS = larger_gaps.buffer(0.0001).union_all()
     
     if small_gaps.shape[0] > 1:
         SMALL_GAPS = small_gaps.union_all()
@@ -93,10 +103,11 @@ for A in ['SLP', 'USA']:
           
         ds_AOI = forestMask.rio.clip(row)
         
-        ds_AOI.rio.crs
+        ds_AOI.plot()
     
         TP = ds_AOI.rio.clip([LARGER_GAPS])
         TN = ds_AOI.rio.clip([LARGER_GAPS], invert = True)
+        
         if small_gaps.shape[0] > 1:
             TN = TN.rio.clip([SMALL_GAPS], invert = True)
             
@@ -104,10 +115,8 @@ for A in ['SLP', 'USA']:
         
         TP.plot(ax = ax[0])
         TN.plot(ax = ax[1])
-        plt.title(Area)
-        plt.show()
-    
-        
+        ax[0].set_title(Area)
+        plt.show()       
     
         TP.rio.to_raster("D:/OneDrive - Mendelova univerzita v Brně/"
                    "Coherence_VI_Krtiny/clusters/TP/"+

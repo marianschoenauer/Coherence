@@ -33,9 +33,9 @@ ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/"
 FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 
 conc = xr.load_dataset(ROOT + "satellite_data/"+A+"_conc.nc", engine = "h5netcdf")
-conc['VV'] = 10*np.log(conc['VV'])
-conc['VH'] = 10*np.log(conc['VH'])
+
 conc = conc.assign(WI = conc['VV'] + conc['VH'])
+conc = conc.assign(RRVI = conc['VH']/conc['VV'])
 conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
 
 # %% plot Time Series

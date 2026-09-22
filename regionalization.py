@@ -42,8 +42,7 @@ AOIs = gpd.read_file(GAPS, layer = "AOIs_3857")\
 gaps_conifer = gpd.read_file(GAPS, layer = "gap_in_conifers")\
     .to_crs(CRS)
 
-for A in ['SLP', 'ITA', 'USA','GER',]:
-    A
+for A in ['SLP', 'ITA', 'GER',]:#'USA',
     
     fm = xr.load_dataset(ROOT + 'DynWorld/'+A+'.nc', engine = 'h5netcdf')\
         .rio.write_crs(4326)\

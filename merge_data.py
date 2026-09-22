@@ -24,31 +24,82 @@ AOIs = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
                            "Coherence_VI_Krtiny/"
                            "shapefiles/gaps.gpkg", layer = "AOIs_3857")
 
-for A, name_s1_backscatter, name_s1_coherence in \
-    [('GER', 'Friedrike_backscatter_32632.nc', 'Fridrieke_coherence_stack_GER_test_0_clean_v2.nc'),
-     ('SLP','SLP_backscatter_stack_10m_2024_dB_32633_v2.nc','SLP_coherence_stack_10m_2024_32633.nc'),
-     ]: 
-    # Sentinel-1
+#   if A == 'USA':        event = np.datetime64("2018-03-01")
 
+for A, name_s1_backscatter, name_s1_coherence, event in \
+    [('GER', 
+      'GER_backscatter_dB.nc', 
+      'Fridrieke_coherence_stack_GER_test_0_clean_v2.nc',
+      np.datetime64("2018-01-18")),
+     
+     ('SLP',
+      'SLP_backscatter_stack_10m_2024_dB_32633_v2.nc',
+      'SLP_coherence_stack_10m_2024_32633.nc',
+      np.datetime64("2024-06-21")),
+     
+     ('ITA', 
+      'ITA_backscatter_dB.nc', 
+      'ITA_coherence_stack_INT40_40m_32633_12day_pairs.nc',
+      np.datetime64("2018-10-29"))
+     ]: 
+        
+        
+    start = np.datetime64(event - pd.to_timedelta(4, unit = 'W'))
+    end = event + pd.to_timedelta(8 if A == 'GER' else 4, unit = 'W')
+    
+    print(A)
+    
+    # Sentinel-1
+    
+    s1_full =  xr.load_dataset(ROOT +'S1_backscatter/'+name_s1_backscatter, 
+                               engine = 'h5netcdf')  
+    
+    s1_full = s1_full.sortby(['time']).sel({'time':slice(start, end)})
+    
+    CRS = s1_full.spatial_ref.attrs['crs_wkt']
+    
+    s1_full = s1_full\
+        .rio.write_crs(CRS)
+
+
+    '''
+    
+    A, name_s1_backscatter =  'GER', 'Friedrike_backscatter_32632.nc'
+    
     s1_full =  xr.load_dataset(ROOT +'S1_backscatter/'+name_s1_backscatter, 
                                engine = 'h5netcdf')
     
+    s1_full = s1_full[['VV','VH']]
+    
+    s1_full['VV'] = 10*np.log10(s1_full['VV'])
+    s1_full['VH'] = 10*np.log10(s1_full['VH'])  
+    
     CRS = s1_full.spatial_ref.attrs['crs_wkt']
     
     s1_full = s1_full\
         .rio.write_crs(CRS)
+    
+    s1_full.to_netcdf(ROOT +'S1_backscatter/GER_backscatter_dB.nc', engine = 'h5netcdf')
+    
+    
+    # ITA
+    A, name_s1_backscatter =  'ITA', 'ITA_backscatter_stack_RTC10_10m_32633_12day_pairs.nc'
+    
+    s1_full =  xr.load_dataset(ROOT +'S1_backscatter/'+name_s1_backscatter, 
+                               engine = 'h5netcdf')
+    
+    s1_full = s1_full[['gamma0_VV','gamma0_VH']].rename({'gamma0_VV':'VV','gamma0_VH':'VH'})
+    
+    s1_full['VV'] = 10*np.log10(s1_full['VV'])
+    s1_full['VH'] = 10*np.log10(s1_full['VH'])  
+    
+    CRS = s1_full.spatial_ref.attrs['crs_wkt']
+    
+    s1_full = s1_full\
+        .rio.write_crs(CRS)
+    
+    s1_full.to_netcdf(ROOT +'S1_backscatter/ITA_backscatter_dB.nc', engine = 'h5netcdf')
 
-    '''
-    s1_full = xr.load_dataset(ROOT +'S1_backscatter/SLP_backscatter_stack_10m_2024_dB_32633.nc', 
-                                   engine = 'h5netcdf').rename({'gamma0_VV_dB':'VV', 'gamma0_VH_dB':'VH'})\
-            .drop_vars(['gamma0_VV','gamma0_VH'])
-            
-    CRS = s1_full.spatial_ref.attrs['crs_wkt']
-    
-    s1_full = s1_full\
-        .rio.write_crs(CRS)
-        
-    s1_full.to_netcdf(ROOT +'S1_backscatter/SLP_backscatter_stack_10m_2024_dB_32633_v2.nc', engine = 'h5netcdf')
     '''
 
     AOI = AOIs.loc[AOIs.AOI.str.startswith(A),:].copy()
@@ -87,17 +138,20 @@ for A, name_s1_backscatter, name_s1_coherence in \
     s2_full =  xr.load_dataset(ROOT + "s2/"
                     +A+".nc", engine = 'h5netcdf')
     
-    np.diff(s2_full.x)
+    s2_full = s2_full.sortby(['time']).sel({'time':slice(start, end)})
+    
     s2_full = s2_full\
         .rio.write_crs(s2_full.spatial_ref.attrs['crs_wkt'])\
             .rio.reproject_match(s1_full)
-            
-    s2_full["NDVI"]  = (s2_full["B8"] - s2_full["B4"]) / (s2_full["B8"] + s2_full["B4"])
+
+    #s2_full["NDVI"]  = (s2_full["B8"] - s2_full["B4"]) / (s2_full["B8"] + s2_full["B4"])
     
     # Coherence
     
     coherence_full =xr.load_dataset(ROOT + 'S1_coherence/'+ name_s1_coherence, 
                                engine = 'h5netcdf')
+    
+    s2_full = s2_full.sortby(['time']).sel({'time':slice(start, end)})
 
     coherence_full = coherence_full\
         .rio.write_crs(coherence_full.spatial_ref.attrs['spatial_ref'])\
@@ -114,29 +168,24 @@ for A, name_s1_backscatter, name_s1_coherence in \
         return coh_X
 
     coh_12 = coherence_baseline_days(12, coherence_full)
-    coh_24 = coherence_baseline_days(24, coherence_full)
-    coh_36 = coherence_baseline_days(36, coherence_full)
+    #coh_24 = coherence_baseline_days(24, coherence_full)
+    #coh_36 = coherence_baseline_days(36, coherence_full)
 
     # merge and export
     conc = xr.merge([s1_full, 
                      s2_full,
-                     coh_12,coh_24,coh_36
-                      ]).sortby(['x','y','time'])
-
-    conc['Rc'] = conc['VH'] - conc['VV']
-
+                     coh_12, #coh_24, coh_36
+                      ])
+    
+    CRS_s1 = s1_full.spatial_ref.attrs['crs_wkt']
+    
+    del s1_full, s2_full, coh_12, coherence_full
+    
+    conc = conc.sortby(['x','y','time'])
+    
     conc = conc.drop_vars('spatial_ref')
-    conc = conc.rio.write_crs(s1_full.spatial_ref.attrs['crs_wkt'])\
-        .rio.reproject(s1_full.spatial_ref.attrs['crs_wkt'])
-
-    if A == 'SLP':
-        event = np.datetime64("2024-06-21")
-    if A == 'USA':
-        event = np.datetime64("2018-03-01")
-    if A == 'ITA':
-        event = np.datetime64("2018-10-29")
-    if A == 'GER':
-        event = np.datetime64("2018-01-18")
+    conc = conc.rio.write_crs(CRS_s1)\
+        .rio.reproject(CRS_s1)
 
     if A == 'GER':
         conc = conc.drop(['scene', 'source_file'])
@@ -145,7 +194,7 @@ for A, name_s1_backscatter, name_s1_coherence in \
 
     conc = conc.assign_coords(time = pd.to_timedelta(conc['time'] - event))
     del event
-    del s1_full, s2_full, coh_12, coh_24, coh_36, coherence_full
+    
 
     conc = conc.drop_attrs()
     conc = conc.rio.write_crs(CRS)

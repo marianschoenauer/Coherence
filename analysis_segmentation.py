@@ -25,10 +25,9 @@ from sklearn.linear_model import RidgeClassifier  as model
 #from sklearn.preprocessing import PolynomialFeatures
 ix = pd.IndexSlice
 
-A = 'ITA'
+A = 'SLP'
 
-ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/"
-           "Coherence_VI_Krtiny/")
+ROOT = "D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
 
 FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 
@@ -36,6 +35,7 @@ conc = xr.load_dataset(ROOT + "satellite_data/"+A+"_conc.nc", engine = "h5netcdf
 
 conc = conc.assign(WI = conc['VV'] + conc['VH'])
 conc = conc.assign(RRVI = conc['VH']/conc['VV'])
+conc = conc.assign(NDVI = conc["B8"] - conc["B4"]) / (conc["B8"] + conc["B4"])
 conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
 
 # %% plot Time Series
@@ -77,12 +77,12 @@ pl = pl.groupby(['time','Gap']).mean()
 
 pl['days'] = pl.reset_index().time.dt.days.values
 
-for col in pl.columns: 
+for col in pl.columns.drop('spatial_ref', 'days'): 
     sns.lineplot(data = pl.reset_index(), x = 'days', y = col, hue = 'Gap')
     plt.axvline(0)
     plt.savefig(FIGS + 'ts_' +A + col + '.png', dpi = 300)
     plt.show()
-    
+
 # %% create Mean diffs
 
 month_before = pd.to_timedelta(-4, unit = 'W')

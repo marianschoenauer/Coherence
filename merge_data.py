@@ -16,7 +16,7 @@ import pandas as pd
 ix = pd.IndexSlice
 #import seaborn as sns
 
-USER = "Lika"
+USER = "Marian"
 
 if USER == "Marian":
     ROOT = "D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
@@ -51,6 +51,7 @@ for A, name_s1_backscatter, name_s1_coherence, event in \
     # Sentinel-1
     s1_bs_full =  xr.load_dataset(ROOT +'satellite_data/S1_backscatter/'+name_s1_backscatter,
                                engine = 'h5netcdf')
+    s1_bs_full = s1_bs_full.rio.write_crs(s1_bs_full['spatial_ref'].attrs['crs_wkt'])
 
     # select time interval of interest. this is done to save file size
     s1_bs_full = s1_bs_full.sortby(['time']).sel({'time':slice(start, end)})
@@ -68,6 +69,7 @@ for A, name_s1_backscatter, name_s1_coherence, event in \
     # Sentinel-2
     s2_full =  xr.load_dataset(ROOT + "satellite_data/s2/" + A + ".nc", \
                                engine = 'h5netcdf')
+    s2_full = s2_full.rio.write_crs(s2_full['spatial_ref'].attrs['crs_wkt'])
 
     # select time interval of interest
     s2_full = s2_full.sortby(['time']).sel({'time':slice(start, end)})
@@ -75,10 +77,11 @@ for A, name_s1_backscatter, name_s1_coherence, event in \
     s2_full = s2_full\
         .rio.write_crs(s2_full.spatial_ref.attrs['crs_wkt'])\
             .rio.reproject_match(s1_bs_full)
-
+            
     # Coherence
     coherence_full =xr.load_dataset(ROOT + 'satellite_data/S1_coherence/'+ name_s1_coherence,
                                engine = 'h5netcdf')
+    coherence_full = coherence_full.rio.write_crs(coherence_full['spatial_ref'].attrs['crs_wkt'])
 
     # select time interval of interest not applicable
 

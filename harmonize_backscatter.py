@@ -5,7 +5,7 @@ Created on Wed Sep 23 11:01:28 2026
 @author: Marian Schonauer
 """
 
-'''
+
 A, name_s1_backscatter =  'GER', 'Friedrike_backscatter_32632.nc'
 
 s1_bs_full =  xr.load_dataset(ROOT +'satellite_data/S1_backscatter/'+name_s1_backscatter, 
@@ -67,4 +67,3 @@ s2_full = s2_full\
         .rio.reproject_match(s1_bs_full)
         
 s2_full["NDVI"]  = (s2_full["SR_B5"] - s2_full["SR_B4"]) / (s2_full["SR_B5"] + s2_full["SR_B4"])
-'''

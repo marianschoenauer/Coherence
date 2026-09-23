@@ -29,7 +29,7 @@ ix = pd.IndexSlice
 
 A = 'ITA'
 
-USER = "Lika"
+USER = "Marian"
 
 if USER == "Marian":
     ROOT = "D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
@@ -43,7 +43,7 @@ conc = xr.load_dataset(ROOT + "satellite_data/"+A+"_conc.nc", engine = "h5netcdf
 conc = conc.assign(WI = conc['VV'] + conc['VH'])
 conc = conc.assign(RRVI = conc['VH']/conc['VV'])
 conc = conc.assign(NDVI = (conc["B8"] - conc["B4"]) / (conc["B8"] + conc["B4"]))
-conc = conc.rio.reproject(conc.spatial_ref.attrs['crs_wkt'])
+#conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
 
 # %% plot Time Series
 

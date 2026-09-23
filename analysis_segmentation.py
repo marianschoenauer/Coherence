@@ -27,9 +27,15 @@ from sklearn.linear_model import RidgeClassifier  as model
 #from sklearn.preprocessing import PolynomialFeatures
 ix = pd.IndexSlice
 
-A = 'SLP'
+A = 'ITA'
 
-ROOT = "D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
+USER = "Lika"
+
+if USER == "Marian":
+    ROOT = "D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
+else:
+    ROOT = "C:/Users/Lika/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
+
 
 FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 
@@ -349,7 +355,7 @@ for best_set in summary['mean'].index:
 # %% print prediction maps
 Test = Test.sort_index()
 
-OUT = "D:\\OneDrive - Mendelova univerzita v Brně\\Coherence_VI_Krtiny\\preds\\"
+OUT = ROOT + "preds/"
 
 os.mkdir(OUT+A)
 

@@ -15,8 +15,6 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 
-
-
 ROOT = ("D:/OneDrive - Mendelova univerzita v Brně/"
            "Coherence_VI_Krtiny/")
 

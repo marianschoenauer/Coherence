@@ -29,21 +29,21 @@ ix = pd.IndexSlice
 
 A = 'ITA'
 
-USER = "Marian"
+USER = "Lika"
 
 if USER == "Marian":
     ROOT = "D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
 else:
     ROOT = "C:/Users/Lika/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
-
+    NC = "C:/Users/Lika/Desktop/py_coherence/NCs/"
 
 FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 
-conc = xr.load_dataset(ROOT + "satellite_data/"+A+"_conc.nc", engine = "h5netcdf")
+conc = xr.load_dataset(NC +A+"_conc.nc", engine = "h5netcdf")
+conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
 conc = conc.assign(WI = conc['VV'] + conc['VH'])
 conc = conc.assign(RRVI = conc['VH']/conc['VV'])
 conc = conc.assign(NDVI = (conc["B8"] - conc["B4"]) / (conc["B8"] + conc["B4"]))
-#conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
 
 # %% plot Time Series
 
@@ -53,7 +53,6 @@ sites = {
     'GER': 'GER_test_5.tif',
 }
 
-# .get(A) returns None (or a default value) if A isn't found
 SITE = sites.get(A)
 
 TN = rio.open_rasterio(ROOT + "clusters/TN/"+SITE)
@@ -77,7 +76,10 @@ sat = conc\
         .to_dataframe()\
                 .swaplevel()\
                     .reset_index('time')\
-                        .sort_index()
+                        .sort_index()\
+                            .drop(columns = ['spatial_ref',
+                                             'source_file',
+                                             'scene'])
 
 tp_sat = sat.loc[tp.index,:].assign(Gap = True)
 tn_sat = sat.loc[tn.index,:].assign(Gap = False)
@@ -88,7 +90,7 @@ pl = pl.groupby(['time','Gap']).mean()
 
 pl['days'] = pl.reset_index().time.dt.days.values
 
-for col in pl.columns.drop(['spatial_ref', 'days']):
+for col in pl.columns.drop(['days']):
     sns.lineplot(data = pl.reset_index(), x = 'days', y = col, hue = 'Gap')
     plt.axvline(0)
     plt.savefig(FIGS + 'ts_' +A + col + '.png', dpi = 300)
@@ -97,7 +99,7 @@ for col in pl.columns.drop(['spatial_ref', 'days']):
 del SITE
 # %% create Mean diffs
 
-month_before = pd.to_timedelta(-4, unit = 'W')
+month_before = -pd.to_timedelta(8 if A == 'GER' else 4, unit = 'W')
 day_0 = pd.to_timedelta(0, unit = 'd')
 delay  = pd.to_timedelta(7, unit = 'd')
 month_after = pd.to_timedelta(8 if A == 'GER' else 4, unit = 'W')

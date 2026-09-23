@@ -11,17 +11,18 @@ import numpy as np
 #import matplotlib.pyplot as plt
 #import geopandas as gpd
 import xarray as xr
-#import rioxarray as rio
+import rioxarray as rio
 import pandas as pd
 ix = pd.IndexSlice
 #import seaborn as sns
 
-USER = "Marian"
+USER = "Lika"
 
 if USER == "Marian":
     ROOT = "D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
 else:
     ROOT = "C:/Users/Lika/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
+    NC = "C:/Users/Lika/Desktop/py_coherence/NCs/"
 
 AOIs = gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = "AOIs_3857")
 
@@ -72,7 +73,7 @@ for A, name_s1_backscatter, name_s1_coherence, event in \
     s2_full = s2_full.rio.write_crs(s2_full['spatial_ref'].attrs['crs_wkt'])
 
     # select time interval of interest
-    s2_full = s2_full.sortby(['time']).sel({'time':slice(start, end)})
+    #s2_full = s2_full.sortby(['time']).sel({'time':slice(start, end)})
 
     s2_full = s2_full\
         .rio.write_crs(s2_full.spatial_ref.attrs['crs_wkt'])\
@@ -123,7 +124,7 @@ for A, name_s1_backscatter, name_s1_coherence, event in \
     conc = xr.merge([s1_bs_full,
                      s2_full,
                      coh_12, coh_24, coh_36
-                      ])
+                      ],compat='no_conflicts',join='outer')
 
     del s1_bs_full, s2_full, coh_12, coh_24, coh_36, coherence_full
 
@@ -135,9 +136,9 @@ for A, name_s1_backscatter, name_s1_coherence, event in \
     if A == 'GER':
         conc = conc.drop_vars(['scene', 'source_file'])
 
-    print(ROOT + 'satellite_data/' +A+ "_conc.nc")
+    print(NC + 'satellite_data/' +A+ "_conc.nc")
 
     conc = conc.rio.write_crs(CRS).rio.reproject(CRS)
-    conc.to_netcdf(ROOT +A+ "_conc.nc", engine= "h5netcdf")
+    conc.to_netcdf(NC +A+ "_conc.nc", engine= "h5netcdf")
 
     del conc, event

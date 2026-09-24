@@ -4,6 +4,24 @@ Created on Wed Sep 23 11:01:28 2026
 
 @author: Marian Schonauer
 """
+#import glob
+import geopandas as gpd
+import numpy as np
+import matplotlib.pyplot as plt
+#import geopandas as gpd
+import xarray as xr
+import rioxarray as rio
+import pandas as pd
+ix = pd.IndexSlice
+#import seaborn as sns
+
+USER = "Marian"
+
+if USER == "Marian":
+    ROOT = "D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
+else:
+    ROOT = "C:/Users/Lika/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
+    NC = "C:/Users/Lika/Desktop/py_coherence/NCs/"
 
 
 A, name_s1_backscatter =  'GER', 'Friedrike_backscatter_32632.nc'

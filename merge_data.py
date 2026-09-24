@@ -8,7 +8,7 @@ Created on Wed Nov 26 14:25:27 2025
 #import glob
 import geopandas as gpd
 import numpy as np
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 #import geopandas as gpd
 import xarray as xr
 import rioxarray as rio
@@ -16,7 +16,7 @@ import pandas as pd
 ix = pd.IndexSlice
 #import seaborn as sns
 
-USER = "Lika"
+USER = "Marian"
 
 if USER == "Marian":
     ROOT = "D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
@@ -24,33 +24,26 @@ else:
     ROOT = "C:/Users/Lika/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
     NC = "C:/Users/Lika/Desktop/py_coherence/NCs/"
 
-AOIs = gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = "AOIs_3857")
+AOIs = gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = "AOIs_3857")\
+    .set_index('AOI')
+    
+events = {
+    'SLP':pd.Timestamp("2024-06-24"),
+    'GER':pd.Timestamp("2018-01-18"),
+    'ITA':pd.Timestamp("2018-10-29")
+        }
 
-#   if A == 'USA':        event = np.datetime64("2018-03-01")
-
-for A, name_s1_backscatter, name_s1_coherence, event in \
-    [
-     ('SLP',
-        'SLP_backscatter_stack_10m_2024_dB_32633_v2.nc',
-        'SLP_coherence_stack_10m_2024_32633.nc',
-        np.datetime64("2024-06-21")),
-     ('GER',
-        'GER_backscatter_dB.nc', 
-        'Fridrieke_coherence_stack_GER_test_0_clean_v2.nc',
-        np.datetime64("2018-01-18")),
-     ('ITA',
-        'ITA_backscatter_dB.nc', 
-        'ITA_coherence_stack_INT40_40m_32633_12day_pairs.nc',
-        np.datetime64("2018-10-29"))
-     ]:
-
-    start = np.datetime64(event - pd.to_timedelta(8 , unit = 'W'))
-    end = event + pd.to_timedelta(8 , unit = 'W')
-
-    print(A)
+for AOI, row in AOIs.iterrows():
+    print(AOI)
+    A = AOI[:3]
+    
+    event = np.datetime64(events.get(A))
+    
+    start = np.datetime64(event - pd.to_timedelta(4 if A == 'SLP' else 8, unit = 'W'))
+    end = event  + pd.to_timedelta(4 if A == 'SLP' else 8, unit = 'W')
 
     # Sentinel-1
-    s1_bs_full =  xr.load_dataset(ROOT +'satellite_data/S1_backscatter/'+name_s1_backscatter,
+    s1_bs_full =  xr.load_dataset(ROOT +'satellite_data/S1_backscatter/cropped/'+AOI+'.nc',
                                engine = 'h5netcdf')
     s1_bs_full = s1_bs_full.rio.write_crs(s1_bs_full['spatial_ref'].attrs['crs_wkt'])
 
@@ -60,34 +53,26 @@ for A, name_s1_backscatter, name_s1_coherence, event in \
     CRS = s1_bs_full.spatial_ref.attrs['crs_wkt']
     s1_bs_full = s1_bs_full.rio.write_crs(CRS).rio.reproject(CRS)
 
-    # crop to AOIs total bounds
-    AOI = AOIs.loc[AOIs.AOI.str.startswith(A),:].copy()
-    xmin, ymin, xmax, ymax = AOI.to_crs(CRS).total_bounds
-    s1_bs_full = s1_bs_full.sel({'x':slice(xmin, xmax), 'y':slice(ymax,ymin)})
-
-    del AOI, xmin, ymin, xmax, ymax
-
     # Sentinel-2
-    s2_full =  xr.load_dataset(ROOT + "satellite_data/s2/" + A + ".nc", \
+    s2_full =  xr.load_dataset(ROOT + "satellite_data/s2/cropped/" + AOI + ".nc", \
                                engine = 'h5netcdf')
-    s2_full = s2_full.rio.write_crs(s2_full['spatial_ref'].attrs['crs_wkt'])
-
-    # select time interval of interest
-    #s2_full = s2_full.sortby(['time']).sel({'time':slice(start, end)})
-
     s2_full = s2_full\
         .rio.write_crs(s2_full.spatial_ref.attrs['crs_wkt'])\
             .rio.reproject_match(s1_bs_full)
+    
+    #for i in s2_full.time[::5]:
+    #    s2_full.sel({"time":i})['B4'].plot()
+    #    plt.show()
+    
+    # select time interval of interest
+    #s2_full = s2_full.sortby(['time']).sel({'time':slice(start, end)})
             
     # Coherence
-    coherence_full =xr.load_dataset(ROOT + 'satellite_data/S1_coherence/'+ name_s1_coherence,
+    coherence_full =xr.load_dataset(ROOT + 'satellite_data/S1_coherence/cropped/'+AOI+'.nc',
                                engine = 'h5netcdf')
-    coherence_full = coherence_full.rio.write_crs(coherence_full['spatial_ref'].attrs['crs_wkt'])
-
-    # select time interval of interest not applicable
 
     coherence_full = coherence_full\
-        .rio.write_crs(coherence_full.spatial_ref.attrs['spatial_ref'])\
+        .rio.write_crs(coherence_full.spatial_ref.attrs['crs_wkt'])\
             .rio.reproject_match(s1_bs_full)
 
     def coherence_baseline_days(days, dataset):
@@ -124,8 +109,8 @@ for A, name_s1_backscatter, name_s1_coherence, event in \
     conc = xr.merge([s1_bs_full,
                      s2_full,
                      coh_12, coh_24, coh_36
-                      ],compat='no_conflicts',join='outer')
-
+                      ],compat='no_conflicts',join='outer') 
+    
     del s1_bs_full, s2_full, coh_12, coh_24, coh_36, coherence_full
 
     conc = conc.sortby(['x','y','time'])
@@ -133,12 +118,16 @@ for A, name_s1_backscatter, name_s1_coherence, event in \
     conc = conc.drop_attrs()
 
     conc = conc.assign_coords(time = pd.to_timedelta(conc['time'] - event))
-    if A == 'GER':
+    
+    try:
         conc = conc.drop_vars(['scene', 'source_file'])
-
-    print(NC + 'satellite_data/' +A+ "_conc.nc")
-
+    except:
+        pass
+    
+    PATH_OUT = ROOT + 'satellite_data/merges_cropped/' +AOI+ ".nc"
     conc = conc.rio.write_crs(CRS).rio.reproject(CRS)
-    conc.to_netcdf(NC +A+ "_conc.nc", engine= "h5netcdf")
+    conc.to_netcdf(PATH_OUT, engine= "h5netcdf")
+    
+    #conc['VV'].mean(dim = 'time').rio.to_raster('C:/Users/Marian Schonauer/Desktop/test/'+AOI+'.tif')
 
     del conc, event

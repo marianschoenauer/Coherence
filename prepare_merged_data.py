@@ -9,7 +9,7 @@ import os
 import glob
 import numpy as np
 import matplotlib.pyplot as plt
-#import geopandas as gpd
+import geopandas as gpd
 import xarray as xr
 import rioxarray as rio
 import pandas as pd
@@ -38,16 +38,17 @@ else:
 
 FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 
+AOIs = gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = "AOIs_3857")\
+    .set_index('AOI')
+
 # %% create Mean diffs
 
 Df_nc = []
 
-for NC_i in glob.glob(NC + "*.nc"):
-    
-    AOI = NC_i.replace('D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/satellite_data/merges_cropped\\',"").replace('.nc','')
+for AOI in AOIs.index:
     A = AOI[:3]
-
-    conc = xr.load_dataset(NC_i, engine = "h5netcdf")
+    
+    conc = xr.load_dataset(NC + AOI + '.nc', engine = "h5netcdf")
     conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
     conc = conc.assign(WI = conc['VV'] + conc['VH'])
     conc = conc.assign(RRVI = conc['VH']/conc['VV'])

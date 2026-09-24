@@ -41,7 +41,7 @@ FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 Df = pd.read_pickle(ROOT + "df.pkl")
 
 # %% plot Time Series
-A = 'SLP'
+A = 'GER'
 
 sites = {
     'SLP': 'SLP_test_BYC1.tif',
@@ -96,7 +96,7 @@ for col in pl.columns.drop(['days']):
     plt.savefig(FIGS + 'ts_' +A + col + '.png', dpi = 300)
     plt.show()
 
-del SITE, col, conc,  NC, pl, sat, sites, TN, tn, tn_sat, TP, tp_sat, tp
+del SITE, col, conc, pl, sat, sites, TN, tn, tn_sat, TP, tp_sat, tp
 # %% settings
 
 cols_s2 = ['NDVI','B12',] #'B3','B4','B5','B8A','B11',
@@ -245,7 +245,7 @@ for A in ['SLP','ITA','GER']:
     
     VAL.to_excel(TABS+A+"val_metrics.xlsx")
 
-'''
+
 #  print prediction maps
     Test = Test.sort_index()
     
@@ -277,4 +277,4 @@ for A in ['SLP','ITA','GER']:
     
         for VAR in list(ds.data_vars):
             ds[VAR].rio.to_raster(OUT_sub + '\\' + VAR + '.tif')
-'''
+

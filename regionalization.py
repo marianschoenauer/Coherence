@@ -89,14 +89,14 @@ for AOI, row, in AOIs.iterrows():#'USA',
     
     if small_gaps.shape[0] > 1:
         TN = TN.rio.clip([SMALL_GAPS], invert = True)
-
+    '''
     fig, ax = plt.subplots(2,1)
     
     TP.plot(ax = ax[0])
     TN.plot(ax = ax[1])
     ax[0].set_title(AOI)
     plt.show()       
-
+    '''
     TP.rio.to_raster("D:/OneDrive - Mendelova univerzita v Brně/"
                "Coherence_VI_Krtiny/clusters/TP/"+
                       str(AOI)+".tif")

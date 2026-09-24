@@ -54,13 +54,13 @@ for AOI in AOIs.index:
     conc = conc.assign(RRVI = conc['VH']/conc['VV'])
     conc = conc.assign(NDVI = (conc["B8"] - conc["B4"]) / (conc["B8"] + conc["B4"]))
     
-    month_before = -pd.to_timedelta(4, unit = 'W')
+    month_before = -pd.to_timedelta(30, unit = 'd')
     day_0 = pd.to_timedelta(0, unit = 'd')
-    delay  = pd.to_timedelta(7, unit = 'd')
-    month_after = pd.to_timedelta(4, unit = 'W')
+    delay  = pd.to_timedelta(5, unit = 'd')
+    month_after = pd.to_timedelta(30, unit = 'W')
     
-    Before = conc.sel({"time":slice(month_before, day_0)}).mean(dim = 'time')
-    After = conc.sel({"time":slice(delay, month_after)}).mean(dim = 'time')
+    Before = conc.sortby('time').sel({"time":slice(month_before, day_0)}).mean(dim = 'time')
+    After = conc.sortby('time').sel({"time":slice(delay, month_after)}).mean(dim = 'time')
     
     Mean = Before - After
     ds = Mean.fillna(Mean.mean())

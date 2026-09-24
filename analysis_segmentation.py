@@ -41,7 +41,7 @@ FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 Df = pd.read_pickle(ROOT + "df.pkl")
 
 # %% plot Time Series
-A = 'GER'
+A = 'SLP'
 
 sites = {
     'SLP': 'SLP_test_BYC1.tif',
@@ -232,7 +232,7 @@ for A in ['SLP','ITA','GER']:
     VAL.columns.name = 'Metric'
     
     sns.boxplot(VAL.stack(level = 'Metric').to_frame(name = "value"), \
-                x = 'setting', y = 'value', hue = 'Metric')
+                y = 'setting', x = 'value', hue = 'Metric')
     plt.savefig(FIGS + A+ '_val_metrics_boxplot.png')
     plt.show()
     
@@ -251,12 +251,12 @@ for A in ['SLP','ITA','GER']:
     
     OUT = ROOT + "preds/"
     
-    os.mkdir(OUT+A)
+    #os.mkdir(OUT+A)
     
     for AOI in Test.index.levels[1]:
     
         OUT_sub = OUT+A+'\\'+AOI.replace('.tif','')
-        os.mkdir(OUT_sub)
+        #os.mkdir(OUT_sub)
         out = Test.loc[ix[:,AOI],:].copy()
     
         #if SEG:

@@ -29,7 +29,6 @@ geoms = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
 
 ROOT = 'D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/satellite_data/'
 
-
 backscatter_names = {
     'SLP':'SLP_backscatter_stack_10m_2024_dB_32633_v2.nc',
     'GER':'GER_backscatter_dB.nc',

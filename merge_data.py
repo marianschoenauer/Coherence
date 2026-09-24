@@ -39,8 +39,8 @@ for AOI, row in AOIs.iterrows():
     
     event = np.datetime64(events.get(A))
     
-    start = np.datetime64(event - pd.to_timedelta(4 if A == 'SLP' else 8, unit = 'W'))
-    end = event  + pd.to_timedelta(4 if A == 'SLP' else 8, unit = 'W')
+    start = np.datetime64(event - pd.to_timedelta(30, unit = 'd'))
+    end = event  + pd.to_timedelta(30, unit = 'd')
 
     # Sentinel-1
     s1_bs_full =  xr.load_dataset(ROOT +'satellite_data/S1_backscatter/cropped/'+AOI+'.nc',
@@ -65,7 +65,7 @@ for AOI, row in AOIs.iterrows():
     #    plt.show()
     
     # select time interval of interest
-    #s2_full = s2_full.sortby(['time']).sel({'time':slice(start, end)})
+    s2_full = s2_full.sortby(['time']).sel({'time':slice(start, end)})
             
     # Coherence
     coherence_full =xr.load_dataset(ROOT + 'satellite_data/S1_coherence/cropped/'+AOI+'.nc',

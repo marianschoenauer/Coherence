@@ -69,7 +69,7 @@ for AOI, row, in AOIs.iterrows():#'USA',
     #  select TN and TP
     
     ## exclude small areas
-    one_pixel_coherence = 20*2
+    one_pixel_coherence = 20**2
     
     larger_gaps = all_gaps[all_gaps.area > one_pixel_coherence].copy()
     small_gaps = all_gaps[all_gaps.area < one_pixel_coherence].copy()

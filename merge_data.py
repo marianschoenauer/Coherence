@@ -28,7 +28,7 @@ AOIs = gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = "AOIs_3857")\
     .set_index('AOI')
     
 events = {
-    'SLP':pd.Timestamp("2024-06-24"),
+    'SLP':pd.Timestamp("2024-06-21"),
     'GER':pd.Timestamp("2018-01-18"),
     'ITA':pd.Timestamp("2018-10-29")
         }

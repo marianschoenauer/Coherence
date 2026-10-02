@@ -20,7 +20,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import matthews_corrcoef, precision_score, \
     f1_score, fbeta_score, recall_score
 #from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import RidgeClassifier  as model
+from sklearn.linear_model import RidgeClassifier  as modelFwee
 #from sklearn.linear_model import LogisticRegression
 #from sklearn.svm import SVC as model
 #from xgboost import XGBClassifier
@@ -51,13 +51,13 @@ for AOI in AOIs.index:
     conc = xr.load_dataset(NC + AOI + '.nc', engine = "h5netcdf")
     conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
     conc = conc.assign(WI = conc['VV'] + conc['VH'])
-    conc = conc.assign(RRVI = conc['VH']/conc['VV'])
+    conc = conc.assign(RRVI = 10 ** ((conc['VH'] - conc['VV']) / 10))
     conc = conc.assign(NDVI = (conc["B8"] - conc["B4"]) / (conc["B8"] + conc["B4"]))
     
     month_before = -pd.to_timedelta(30, unit = 'd')
     day_0 = pd.to_timedelta(0, unit = 'd')
     delay  = pd.to_timedelta(5, unit = 'd')
-    month_after = pd.to_timedelta(30, unit = 'W')
+    month_after = pd.to_timedelta(30, unit = 'd')
     
     Before = conc.sortby('time').sel({"time":slice(month_before, day_0)}).mean(dim = 'time')
     After = conc.sortby('time').sel({"time":slice(delay, month_after)}).mean(dim = 'time')

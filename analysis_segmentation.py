@@ -53,9 +53,6 @@ SITE = sites.get(A)
 
 conc = xr.load_dataset(NC +SITE.replace('.tif','.nc'), engine = "h5netcdf")
 conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
-conc = conc.assign(WI = conc['VV'] + conc['VH'])
-conc = conc.assign(RRVI = conc['VH']/conc['VV'])
-conc = conc.assign(NDVI = (conc["B8"] - conc["B4"]) / (conc["B8"] + conc["B4"]))
 
 TN = rio.open_rasterio(ROOT + "clusters/TN/"+SITE)
 CRS = TN.spatial_ref.attrs['crs_wkt']

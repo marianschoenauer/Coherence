@@ -4,7 +4,7 @@ save_data_on_exit = True
 save_history = True
 save_non_project_files = False
 project_type = 'empty-project-type'
-recent_files = ['canopy_height_diff_to_shp.py', 'select_gaps_from_geoportalNRW.py', '..\\..\\..\\FUNC\\APIs\\GEE\\geee_terrain_corrected.py', 'harmonize_backscatter.py', 'crop_S1data_to_AOIs.py', 'regionalization.py', 'merge_data.py', 'prepare_merged_data.py', 'analysis_segmentation.py']
+recent_files = ['canopy_height_diff_to_shp.py', 'harmonize_backscatter.py', 'crop_S1data_to_AOIs.py', '..\\..\\..\\FUNC\\APIs\\GEE\\geee_terrain_corrected.py', 'regionalization.py', 'merge_data.py', 'prepare_merged_data.py', 'analysis_segmentation.py']
 
 [main]
 version = 0.2.0

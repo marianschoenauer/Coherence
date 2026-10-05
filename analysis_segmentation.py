@@ -41,7 +41,7 @@ FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 Df = pd.read_pickle(ROOT + "df.pkl")
 
 # %% plot Time Series
-A = 'SLP'
+A = 'GER'
 
 sites = {
     'SLP': 'SLP_test_BYC1.tif',
@@ -94,6 +94,8 @@ for col in pl.columns.drop(['days']):
     plt.show()
 
 del SITE, col, conc, pl, sat, sites, TN, tn, tn_sat, TP, tp_sat, tp
+
+
 # %% settings
 
 cols_s2 = ['NDVI','B12',] #'B3','B4','B5','B8A','B11',
@@ -101,12 +103,13 @@ cols_backscatter = ['WI', 'VV', 'RRVI'] #'Rc','RVI','VH',
 cols_coherence_12 = ['coh_12'] #,
 cols_coherence_12_24_36 = ['coh_12', 'coh_24', 'coh_36', ]
 
-sce_data = {'coherence_12_24_36':cols_coherence_12_24_36,
+
+sce_data = {'coherence_12_24_36':cols_coherence_12_24_36 ,
             'coherence':cols_coherence_12,
             'backscatter':cols_backscatter,
             'backscatter+coherence':cols_backscatter+cols_coherence_12,
             's2':cols_s2,
-            's2+backscatter': cols_s2 + cols_backscatter,
+            's2+backscatter': cols_s2,
             's2+coherence': cols_s2 + cols_coherence_12,
             's2+backscatter+coherence': cols_s2+ cols_backscatter + cols_coherence_12
            }
@@ -117,161 +120,150 @@ del cols_s2, cols_backscatter, cols_coherence_12, cols_coherence_12_24_36, sce_d
 
 # %% model training
 
-for A in ['SLP','ITA','GER']:
-    print(A)
-    df = Df.loc[A,:].copy()
-    df.index = df.index.remove_unused_levels()
+output_settings = []
 
-    output_settings = []
-    
-    output_aois = []
-    
-    #Partition = df.reset_index()['AOI'].isin([A+'_train.tif']).values
-    
-    Tests = []
-    Coefs = []
-    for Setting, cols in sce.iterrows():
-    
-        tests = []
-        coefs = []
-        for test_area in df.index.levels[1]:
-    
-            Partition = df.reset_index()['AOI'].isin([test_area]).values
-    
-            train = df.loc[~Partition,cols.iloc[0]].copy()
-            test = df.loc[Partition,cols.iloc[0]].copy()
-    
-            train.columns.names = ['Feature', 'feature_seg']
-    
-            if np.any(test.reset_index(['Gap','AOI']).index.isin(
-                    train.reset_index(['Gap','AOI']).index)):
-                print("OVERLAPPING PIXELS")
-    
-            y = train.reset_index().loc[:,'Gap'].values.flatten()
-            X = train.to_numpy()
-    
-            pos_weight = np.sqrt(train.groupby('Gap').size()[False]/train.groupby('Gap').size()[True])
-            weights = np.where(y, pos_weight, 1)
-            
-            '''
-            model = LogisticRegression(
-                        penalty="elasticnet",
-                        solver="saga",      # must be 'saga' for elastic net
-                        l1_ratio=0.5        # 0 = ridge, 1 = lasso
-                    )
-            '''
-            pipe = Pipeline([('scaler',StandardScaler()),
-                             ('model',model(random_state = 47))]) #(random_state = 1)solver = 'svd'
-            #cale_pos_weight = pos_weights
-    
-            model_fit = pipe.fit(X = X, y = y, model__sample_weight = weights) #
-            test['pred_' + Setting] = model_fit.predict(test)
-    
-            tests.append(test.loc[:,['pred_' + Setting]])
-            
-            coef = pd.DataFrame({"weight": model_fit['model'].feature_importances_.flatten()},
-                                index = train.columns)\
-                .assign(Setting = Setting, test_area = test_area)\
-                    .set_index(['Setting','test_area'], append = True)
-    
-            coefs.append(coef)
-            
-            del train, test, y, X, pos_weight, weights, pipe, model_fit
-    
-        Tests.append(pd.concat(tests, axis = 0))
-        Coefs.append(pd.concat(coefs, axis = 0))
-    
-    Test = pd.concat(Tests, axis=1)
-    Coef = pd.concat(Coefs, axis = 0)
-    
-    Test.index = Test.index.remove_unused_levels()
-    
+output_aois = []
+
+#Partition = df.reset_index()['AOI'].isin([A+'_train.tif']).values
+
+Tests = []
+Coefs = []
+for Setting, cols in sce.iterrows():
+
+    tests = []
+    coefs = []
+    for test_area in Df.index.levels[2]:
+        
+        Partition = Df.reset_index('AOI')['AOI'].isin([test_area]).values
+
+        train = Df.loc[~Partition,cols.iloc[0]].copy()
+        test = Df.loc[Partition,cols.iloc[0]].copy()
+
+        train.columns.names = ['Feature', 'feature_seg']
+
+        if np.any(test.reset_index(['Gap','AOI']).index.isin(
+                train.reset_index(['Gap','AOI']).index)):
+            print("OVERLAPPING PIXELS")
+
+        y = train.reset_index().loc[:,'Gap'].values.flatten()
+        X = train.to_numpy()
+
+        pos_weight = np.sqrt(train.groupby('Gap').size()[False]/train.groupby('Gap').size()[True])
+        weights = np.where(y, pos_weight, 1)
+
+        pipe = Pipeline([('scaler',StandardScaler()),
+                         ('model',model(random_state = 1))])
+
+        model_fit = pipe.fit(X = X, y = y, model__sample_weight = weights)
+        test['pred_' + Setting] = model_fit.predict(test)
+
+        tests.append(test.loc[:,['pred_' + Setting]])
+        
+        coef = pd.DataFrame({"weight": model_fit['model'].feature_importances_.flatten()},
+                            index = train.columns)\
+            .assign(Setting = Setting, test_area = test_area)\
+                .set_index(['Setting','test_area'], append = True)
+
+        coefs.append(coef)
+        
+        print(test_area)
+        
+        del train, test, y, X, pos_weight, weights, pipe, model_fit
+
+    Tests.append(pd.concat(tests, axis = 0))
+    Coefs.append(pd.concat(coefs, axis = 0))
+
+Test = pd.concat(Tests, axis=1)
+Coef = pd.concat(Coefs, axis = 0)
+
+Test.index = Test.index.remove_unused_levels()
+
 #  weights
-    
-    coefs = Coef.groupby(['Feature' ,'feature_seg' , 'Setting']).mean()
-    
-    cc = coefs\
-            .reorder_levels([2,0,1])\
-                .sort_index()
-    
-    cc.unstack('Setting').to_excel(TABS + A+'model_weights.xlsx')
-    
+
+coefs = Coef.groupby(['Feature' ,'feature_seg' , 'Setting', 'test_area']).mean()
+
+cc = coefs\
+        .reorder_levels([2,0,1,3])\
+            .sort_index()
+
+cc.unstack('Setting').to_excel(TABS + A+'model_weights.xlsx')
+
 #  validation metrics
-    
-    results_val = []
-    
-    for (aoi), group in Test.groupby('AOI'):
-    
-        y_true = group.reset_index(['Gap'])['Gap'].values
-    
-        for Setting in group.columns:
-            y_pred = group.loc[:,Setting].values
-    
-            F1 = f1_score(y_true = y_true, y_pred = y_pred, zero_division = 0)
-            F05 = fbeta_score(y_true = y_true, y_pred = y_pred, beta = 0.5, \
-                              zero_division = 0)
-            Precision = precision_score(y_true = y_true, y_pred = y_pred, \
-                                        zero_division = 0)
-            Recall = recall_score(y_true = y_true, y_pred = y_pred, \
-                                        zero_division = 0)
-            MCC = matthews_corrcoef(y_true = y_true, y_pred = y_pred)
-    
-            results_val.append({'setting':Setting[0][5:],
-                            'test_area':aoi,
-                            'F1':F1,
-                            'F05': F05,
-                            'Precision':Precision,
-                            'Recall':Recall,
-                            'MCC':MCC})    
-    
-    VAL = pd.DataFrame(results_val).set_index(['setting','test_area'])\
-        .sort_index()
-    VAL.columns.name = 'Metric'
-    
-    sns.boxplot(VAL.stack(level = 'Metric').to_frame(name = "value"), \
-                y = 'setting', x = 'value', hue = 'Metric')
-    plt.savefig(FIGS + A+ '_val_metrics_boxplot.png')
-    plt.show()
-    
-    summary = VAL.groupby('setting')['F1'].describe()\
-        .sort_values('mean', ascending = False)
-    
-    print('F1', summary)
-    
-    best_set = summary['mean'].idxmax()
-    
-    VAL.to_excel(TABS+A+"val_metrics.xlsx")
+
+results_val = []
+
+for (aoi), group in Test.groupby('AOI'):
+
+    y_true = group.reset_index(['Gap'])['Gap'].values
+
+    for Setting in group.columns:
+        y_pred = group.loc[:,Setting].values
+
+        F1 = f1_score(y_true = y_true, y_pred = y_pred, zero_division = 0)
+        F05 = fbeta_score(y_true = y_true, y_pred = y_pred, beta = 0.5, \
+                          zero_division = 0)
+        Precision = precision_score(y_true = y_true, y_pred = y_pred, \
+                                    zero_division = 0)
+        Recall = recall_score(y_true = y_true, y_pred = y_pred, \
+                                    zero_division = 0)
+        MCC = matthews_corrcoef(y_true = y_true, y_pred = y_pred)
+
+        results_val.append({'setting':Setting[0][5:],
+                        'test_area':aoi,
+                        'F1':F1,
+                        'F05': F05,
+                        'Precision':Precision,
+                        'Recall':Recall,
+                        'MCC':MCC})    
+
+VAL = pd.DataFrame(results_val).set_index(['setting','test_area'])\
+    .sort_index()
+VAL.columns.name = 'Metric'
+
+sns.boxplot(VAL.stack(level = 'Metric').to_frame(name = "value"), \
+            y = 'setting', x = 'value', hue = 'Metric')
+plt.savefig(FIGS + A+ '_val_metrics_boxplot.png')
+plt.show()
+
+summary = VAL.groupby('setting')['F1'].describe()\
+    .sort_values('mean', ascending = False)
+
+print('F1', summary)
+
+best_set = summary['mean'].idxmax()
+
+VAL.to_excel(TABS+A+"val_metrics.xlsx")
 
 
 #  print prediction maps
-    Test = Test.sort_index()
-    
-    OUT = ROOT + "preds/"
-    
-    #os.mkdir(OUT+A)
-    
-    for AOI in Test.index.levels[1]:
-    
-        OUT_sub = OUT+A+'\\'+AOI.replace('.tif','')
-        #os.mkdir(OUT_sub)
-        out = Test.loc[ix[:,AOI],:].copy()
-    
-        #if SEG:
-        out = out.loc[:,out.droplevel(1, axis = 1).columns.str.startswith('pred')]\
-            .droplevel(1,axis = 1).reset_index(['Gap','AOI']).drop(columns = 'AOI')
-        #else:
-         #   out = out.loc[:,out.columns.str.startswith('pred')]\
-          #      .reset_index(['Gap','AOI']).drop(columns = 'AOI')
-    
-        out = out.astype(np.bool_).astype(int)
-    
-        out = out.swaplevel().sort_index(level = ['y','x'])
-    
-        ds = xr.Dataset.from_dataframe(out)\
-            .sortby(['y','x'])\
-                .rio.write_crs(CRS)\
-                    .rio.reproject(4326)
-    
-        for VAR in list(ds.data_vars):
-            ds[VAR].rio.to_raster(OUT_sub + '\\' + VAR + '.tif')
+Test = Test.sort_index()
+
+OUT = ROOT + "preds/"
+
+#os.mkdir(OUT+A)
+
+for AOI in Test.index.levels[2]:
+
+    OUT_sub = OUT+'LOAO\\'+AOI.replace('.tif','')
+    os.mkdir(OUT_sub)
+    out = Test.loc[ix[:,:,AOI],:].copy()
+
+    #if SEG:
+    out = out.loc[:,out.droplevel(1, axis = 1).columns.str.startswith('pred')]\
+        .droplevel(1,axis = 1).reset_index(['Gap','AOI']).drop(columns = 'AOI')
+    #else:
+     #   out = out.loc[:,out.columns.str.startswith('pred')]\
+      #      .reset_index(['Gap','AOI']).drop(columns = 'AOI')
+
+    out = out.astype(np.bool_).astype(int)
+
+    out = out.swaplevel().sort_index(level = ['y','x'])
+
+    ds = xr.Dataset.from_dataframe(out)\
+        .sortby(['y','x'])\
+            .rio.write_crs(CRS)\
+                .rio.reproject(4326)
+
+    for VAR in list(ds.data_vars):
+        ds[VAR].rio.to_raster(OUT_sub + '\\' + VAR + '.tif')
 

@@ -109,7 +109,7 @@ sce_data = {'coherence_12_24_36':cols_coherence_12_24_36 ,
             'backscatter':cols_backscatter,
             'backscatter+coherence':cols_backscatter+cols_coherence_12,
             's2':cols_s2,
-            's2+backscatter': cols_s2,
+            's2+backscatter': cols_s2 + cols_backscatter,
             's2+coherence': cols_s2 + cols_coherence_12,
             's2+backscatter+coherence': cols_s2+ cols_backscatter + cols_coherence_12
            }
@@ -152,7 +152,7 @@ for Setting, cols in sce.iterrows():
         weights = np.where(y, pos_weight, 1)
 
         pipe = Pipeline([('scaler',StandardScaler()),
-                         ('model',model(random_state = 1))])
+                         ('model',model(random_state = 47))])
 
         model_fit = pipe.fit(X = X, y = y, model__sample_weight = weights)
         test['pred_' + Setting] = model_fit.predict(test)
@@ -220,13 +220,17 @@ VAL = pd.DataFrame(results_val).set_index(['setting','test_area'])\
     .sort_index()
 VAL.columns.name = 'Metric'
 
-sns.boxplot(VAL.stack(level = 'Metric').to_frame(name = "value"), \
-            y = 'setting', x = 'value', hue = 'Metric')
+VAL['Country'] = VAL.reset_index('test_area')['test_area'].str[:3].values
+VAL = VAL.set_index('Country',append = True)
+
+
+
+sns.boxplot(VAL, \
+            y = 'setting', x = 'F1', hue = 'Country')
 plt.savefig(FIGS + A+ '_val_metrics_boxplot.png')
 plt.show()
 
-summary = VAL.groupby('setting')['F1'].describe()\
-    .sort_values('mean', ascending = False)
+summary = VAL.groupby(['Country','setting'])['F1'].describe()
 
 print('F1', summary)
 
@@ -245,7 +249,7 @@ OUT = ROOT + "preds/"
 for AOI in Test.index.levels[2]:
 
     OUT_sub = OUT+'LOAO\\'+AOI.replace('.tif','')
-    os.mkdir(OUT_sub)
+    #os.mkdir(OUT_sub)
     out = Test.loc[ix[:,:,AOI],:].copy()
 
     #if SEG:

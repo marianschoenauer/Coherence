@@ -38,15 +38,17 @@ else:
 
 FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 
-AOIs = gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = "AOIs_3857")\
-    .set_index('AOI')
+AOIs = gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = "AOIs_individual_gaps_3035")
+AOIs['AOI'] = AOIs['Country'] + "_" + AOIs['ID_No'].astype(str)
+AOIs = AOIs.set_index('AOI')
 
 # %% create Mean diffs
 
 Df_nc = []
 
-for AOI in AOIs.index:
-    A = AOI[:3]
+for AOI,row in AOIs.iterrows():
+    A = row['Country']
+    AOI_geom = row[['geometry']]
     
     conc = xr.load_dataset(NC + AOI + '.nc', engine = "h5netcdf")
     conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
@@ -98,11 +100,15 @@ for AOI in AOIs.index:
     
     ds = xr.merge(list_da)
     
+    plt.imshow(ds.sel(feature = 'VV_intensity_1')['VV'])
+    plt.show()
+    
+
 # labelling
     df_list = []
     
 
-    TN = rio.open_rasterio(ROOT + "clusters/TN/"+AOI+".tif")
+    TN = rio.open_rasterio(ROOT + "clusters/TN/"+AOI+".tif").rio.clip(AOI_geom)
 
     TP = rio.open_rasterio(ROOT + "clusters/TP/"+AOI+".tif")\
         .rio.reproject_match(TN)
@@ -127,6 +133,7 @@ for AOI in AOIs.index:
 
     tp_sat = sat.loc[tp.index,:].assign(Gap = True, Country = A, AOI = AOI)
     tn_sat = sat.loc[tn.index,:].assign(Gap = False, Country = A, AOI = AOI)
+    
 
     if np.any(tp_sat.index.isin(tn_sat.index)):
         print("pixels overlap")

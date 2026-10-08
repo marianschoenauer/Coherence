@@ -37,7 +37,7 @@ s1_bs_full['VH'] = 10*np.log10(s1_bs_full['VH'])
 CRS = s1_bs_full.spatial_ref.attrs['crs_wkt']
 
 s1_bs_full = s1_bs_full\
-    .rio.write_crs(CRS)
+    .rio.write_crs(CRS).rio.reproject(3035)
 
 s1_bs_full.to_netcdf(ROOT +'satellite_data/S1_backscatter/GER_backscatter_dB.nc', engine = 'h5netcdf')
 
@@ -56,11 +56,11 @@ s1_bs_full['VH'] = 10*np.log10(s1_bs_full['VH'])
 CRS = s1_bs_full.spatial_ref.attrs['crs_wkt']
 
 s1_bs_full = s1_bs_full\
-    .rio.write_crs(CRS)
+    .rio.write_crs(CRS).rio.reproject(3035)
 
 s1_bs_full.to_netcdf(ROOT +'satellite_data/S1_backscatter/ITA_backscatter_dB.nc', engine = 'h5netcdf')
 
-'''
+
 '''
 s1_bs_full =  xr.load_dataset(ROOT+'satellite_data/s1/'+A+'.nc', 
                            engine = 'h5netcdf')

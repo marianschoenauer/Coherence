@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import xarray as xr
 import rioxarray as rio
 import pandas as pd
+import geopandas as gpd
 import seaborn as sns
 from skimage import feature
 from sklearn.pipeline import Pipeline
@@ -20,10 +21,11 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import matthews_corrcoef, precision_score, \
     f1_score, fbeta_score, recall_score
 #from sklearn.ensemble import RandomForestClassifier
-#from sklearn.linear_model import RidgeClassifier  as model
+from sklearn.linear_model import RidgeClassifier  as model
 #from sklearn.linear_model import LogisticRegression
 #from sklearn.svm import SVC as model
 from xgboost import XGBClassifier as model
+#from sklearn.preprocessing import OneHotEncoder
 #from sklearn.preprocessing import PolynomialFeatures
 ix = pd.IndexSlice
 
@@ -40,13 +42,24 @@ FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 
 Df = pd.read_pickle(ROOT + "df.pkl")
 
+dummies = pd.get_dummies(Df.reset_index('Country')['Country'], prefix='Country', dtype=int)
+
+dummies.columns = pd.MultiIndex.from_arrays([list(dummies.columns), [' ', ' ', ' ']])
+
+Df = Df.join(dummies)
+
+sizes= Df.groupby(['Gap']).size()
+sizes = 1 / (sizes  / sizes.sum()).to_frame(('weights', " "))
+
+Df = Df.merge(sizes, left_index = True, right_index = True)
+
 # %% plot Time Series
-A = 'GER'
+A = 'ITA'
 
 sites = {
-    'SLP': 'SLP_test_BYC1.tif',
-    'ITA': 'ITA_test_5.tif',
-    'GER': 'GER_test_5.tif',
+    'SLP': 'SLP_30.tif',
+    'ITA': 'ITA_70.tif',
+    'GER': 'GER_5.tif',
 }
 
 SITE = sites.get(A)
@@ -102,16 +115,16 @@ cols_s2 = ['NDVI','B12',] #'B3','B4','B5','B8A','B11',
 cols_backscatter = ['WI', 'VV', 'RRVI'] #'Rc','RVI','VH',
 cols_coherence_12 = ['coh_12'] #,
 cols_coherence_12_24_36 = ['coh_12', 'coh_24', 'coh_36', ]
+Country = ['Country_SLP', 'Country_GER', 'Country_ITA']
 
-
-sce_data = {'coherence_12_24_36':cols_coherence_12_24_36 ,
-            'coherence':cols_coherence_12,
-            'backscatter':cols_backscatter,
-            'backscatter+coherence':cols_backscatter+cols_coherence_12,
-            's2':cols_s2,
-            's2+backscatter': cols_s2 + cols_backscatter,
-            's2+coherence': cols_s2 + cols_coherence_12,
-            's2+backscatter+coherence': cols_s2+ cols_backscatter + cols_coherence_12
+sce_data = {'coherence_12_24_36':cols_coherence_12_24_36 + Country,
+            'coherence':cols_coherence_12+ Country,
+            'backscatter':cols_backscatter+ Country,
+            'backscatter+coherence':cols_backscatter+cols_coherence_12+ Country,
+            's2':cols_s2+ Country,
+            's2+backscatter': cols_s2 + cols_backscatter+ Country,
+            's2+coherence': cols_s2 + cols_coherence_12+ Country,
+            's2+backscatter+coherence': cols_s2+ cols_backscatter + cols_coherence_12+ Country
            }
 
 sce = pd.DataFrame({'cols': sce_data.values()}, index=sce_data.keys())
@@ -121,10 +134,10 @@ del cols_s2, cols_backscatter, cols_coherence_12, cols_coherence_12_24_36, sce_d
 # %% model training
 
 output_settings = []
-
 output_aois = []
 
 #Partition = df.reset_index()['AOI'].isin([A+'_train.tif']).values
+#Df = Df.loc[['SLP'],:]
 
 Tests = []
 Coefs = []
@@ -132,11 +145,12 @@ for Setting, cols in sce.iterrows():
 
     tests = []
     coefs = []
-    for test_area in Df.index.levels[2]:
+    for test_area in Df.index.remove_unused_levels().levels[2]:
         
         Partition = Df.reset_index('AOI')['AOI'].isin([test_area]).values
 
         train = Df.loc[~Partition,cols.iloc[0]].copy()
+        weights = Df.loc[~Partition,'weights'].values
         test = Df.loc[Partition,cols.iloc[0]].copy()
 
         train.columns.names = ['Feature', 'feature_seg']
@@ -148,11 +162,11 @@ for Setting, cols in sce.iterrows():
         y = train.reset_index().loc[:,'Gap'].values.flatten()
         X = train.to_numpy()
 
-        pos_weight = np.sqrt(train.groupby('Gap').size()[False]/train.groupby('Gap').size()[True])
-        weights = np.where(y, pos_weight, 1)
+        #pos_weight = np.sqrt(train.groupby('Gap').size()[False]/train.groupby('Gap').size()[True])
+        #weights = np.where(y, pos_weight, 1)
 
         pipe = Pipeline([('scaler',StandardScaler()),
-                         ('model',model(random_state = 47))])
+                         ('model',model(random_state = 0))])
 
         model_fit = pipe.fit(X = X, y = y, model__sample_weight = weights)
         test['pred_' + Setting] = model_fit.predict(test)
@@ -161,14 +175,12 @@ for Setting, cols in sce.iterrows():
         
         coef = pd.DataFrame({"weight": model_fit['model'].feature_importances_.flatten()},
                             index = train.columns)\
-            .assign(Setting = Setting, test_area = test_area)\
-                .set_index(['Setting','test_area'], append = True)
+            .assign(Setting = Setting, fold = test_area)\
+                .set_index(['Setting','fold'], append = True)
 
         coefs.append(coef)
-        
-        print(test_area)
-        
-        del train, test, y, X, pos_weight, weights, pipe, model_fit
+
+        del train, test, y, X,  weights, pipe, model_fit
 
     Tests.append(pd.concat(tests, axis = 0))
     Coefs.append(pd.concat(coefs, axis = 0))
@@ -180,7 +192,7 @@ Test.index = Test.index.remove_unused_levels()
 
 #  weights
 
-coefs = Coef.groupby(['Feature' ,'feature_seg' , 'Setting', 'test_area']).mean()
+coefs = Coef.groupby(['Feature' ,'feature_seg' , 'Setting', 'fold']).mean()
 
 cc = coefs\
         .reorder_levels([2,0,1,3])\
@@ -238,7 +250,6 @@ best_set = summary['mean'].idxmax()
 
 VAL.to_excel(TABS+A+"val_metrics.xlsx")
 
-
 #  print prediction maps
 Test = Test.sort_index()
 
@@ -246,9 +257,21 @@ OUT = ROOT + "preds/"
 
 #os.mkdir(OUT+A)
 
+# %% F1 vs. size
+Gapsize = Df.reset_index().groupby(['AOI', 'Gap']).size().loc[ix[:,True]].to_frame('area')
+Gapsize.index.names = ['test_area']
+
+si = VAL.merge(Gapsize, left_index = True, right_index = True)
+
+sns.scatterplot(data = si.loc[best_set[1],:], x = 'area', y = 'F1', hue = 'Country')
+plt.xscale('log')
+plt.xlabel('area [1000 m2]')
+
+plt.savefig(FIGS + 'F1_vs_gapsize.png')
+# %%
 for AOI in Test.index.levels[2]:
 
-    OUT_sub = OUT+'LOAO\\'+AOI.replace('.tif','')
+    OUT_sub = OUT+'LOAO/'+AOI.replace('.tif','')
     #os.mkdir(OUT_sub)
     out = Test.loc[ix[:,:,AOI],:].copy()
 
@@ -266,8 +289,8 @@ for AOI in Test.index.levels[2]:
     ds = xr.Dataset.from_dataframe(out)\
         .sortby(['y','x'])\
             .rio.write_crs(CRS)\
-                .rio.reproject(4326)
+                .rio.reproject(3035)
 
     for VAR in list(ds.data_vars):
-        ds[VAR].rio.to_raster(OUT_sub + '\\' + VAR + '.tif')
+        ds[VAR].rio.to_raster(OUT_sub + '/' + VAR + '.tif')
 

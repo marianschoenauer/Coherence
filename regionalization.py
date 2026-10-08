@@ -34,16 +34,18 @@ GAPS = ("D:/OneDrive - Mendelova univerzita v Brně/"
                            "Coherence_VI_Krtiny/"
                            "shapefiles/gaps.gpkg")
 
-AOIs = gpd.read_file(GAPS, layer = "AOIs_3857").set_index('AOI')
+AOIs = gpd.read_file(GAPS, layer = "AOIs_individual_gaps_3035")
+AOIs['AOI'] = AOIs['Country'] + "_" + AOIs['ID_No'].astype(str)
+AOIs = AOIs.set_index('AOI')
 
 gaps_conifer = gpd.read_file(GAPS, layer = "gap_in_conifers")
 
-CRS = 3857
+CRS = 3035
 
 for AOI, row, in AOIs.iterrows():#'USA',
     print(AOI)
-    A = AOI[:3]
-    
+    A = row['Country']
+
     fm = xr.load_dataset(ROOT + 'DynWorld/cropped/'+AOI+'.nc', engine = 'h5netcdf')
     CRS_DS = fm['spatial_ref'].attrs['crs_wkt']
     fm = fm.rio.write_crs(CRS_DS).rio.reproject(CRS)
@@ -69,14 +71,14 @@ for AOI, row, in AOIs.iterrows():#'USA',
     #  select TN and TP
     
     ## exclude small areas
-    one_pixel_coherence = 20**2
+    MMU = 20**2
     
-    larger_gaps = all_gaps[all_gaps.area > one_pixel_coherence].copy()
-    small_gaps = all_gaps[all_gaps.area < one_pixel_coherence].copy()
+    larger_gaps = all_gaps[all_gaps.area > MMU].copy()
+    small_gaps = all_gaps[all_gaps.area < MMU].copy()
       
     ## make one geometry
     
-    LARGER_GAPS = larger_gaps.to_crs(forestMask.rio.crs).union_all()
+    LARGER_GAPS = larger_gaps.union_all()
     
     if small_gaps.shape[0] > 1:
         SMALL_GAPS = small_gaps.union_all()
@@ -85,10 +87,10 @@ for AOI, row, in AOIs.iterrows():#'USA',
 
     TP = forestMask.rio.clip([LARGER_GAPS])
     TN = forestMask.rio.clip([LARGER_GAPS], invert = True)
-
-    
+        
     if small_gaps.shape[0] > 1:
         TN = TN.rio.clip([SMALL_GAPS], invert = True)
+
     '''
     fig, ax = plt.subplots(2,1)
     

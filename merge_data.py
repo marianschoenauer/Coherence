@@ -24,8 +24,9 @@ else:
     ROOT = "C:/Users/Lika/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/"
     NC = "C:/Users/Lika/Desktop/py_coherence/NCs/"
 
-AOIs = gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = "AOIs_3857")\
-    .set_index('AOI')
+AOIs = gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = "AOIs_individual_gaps_3035")
+AOIs['AOI'] = AOIs['Country'] + "_" + AOIs['ID_No'].astype(str)
+AOIs = AOIs.set_index('AOI')
     
 events = {
     'SLP':pd.Timestamp("2024-06-21"),
@@ -35,7 +36,8 @@ events = {
 
 for AOI, row in AOIs.iterrows():
     print(AOI)
-    A = AOI[:3]
+    A = row['Country']
+    aoi = row[['geometry']]
     
     event = np.datetime64(events.get(A))
     
@@ -109,7 +111,7 @@ for AOI, row in AOIs.iterrows():
     conc = xr.merge([s1_bs_full,
                      s2_full,
                      coh_12, coh_24, coh_36
-                      ],compat='no_conflicts',join='outer') 
+                      ],compat='no_conflicts',join='outer')
     
     del s1_bs_full, s2_full, coh_12, coh_24, coh_36, coherence_full
 

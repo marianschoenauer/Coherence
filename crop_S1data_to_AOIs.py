@@ -4,28 +4,22 @@ Created on Thu Sep 24 11:17:37 2026
 
 @author: Marian Schonauer
 """
-
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Sep 24 11:16:52 2026
-
-@author: Marian Schonauer
-"""
-
-#import glob
-import geopandas as gpd
 import numpy as np
-import matplotlib.pyplot as plt
-#import geopandas as gpd
+import pandas as pd
+import geopandas as gpd
 import xarray as xr
 import rioxarray as rio
-import pandas as pd
-ix = pd.IndexSlice
-#import seaborn as sns
+import matplotlib.pyplot as plt
 
-geoms = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
+AOIs = gpd.read_file("D:/OneDrive - Mendelova univerzita v Brně/"
                            "Coherence_VI_Krtiny/"
-                           "shapefiles/gaps.gpkg", layer = "AOIs_3857")
+                           "shapefiles/gaps.gpkg", 
+                           layer = "AOIs_individual_gaps_3035")
+AOIs['AOI'] = AOIs['Country'] + "_" + AOIs['ID_No'].astype(str)
+AOIs = AOIs.set_index('AOI')
+AOIs.loc[:,'geometry'] = AOIs.geometry.buffer(250)
+
+CRS = AOIs.crs
 
 ROOT = 'D:/OneDrive - Mendelova univerzita v Brně/Coherence_VI_Krtiny/satellite_data/'
 
@@ -41,48 +35,31 @@ coherence_names = {
     'ITA':'ITA_coherence_stack_INT40_40m_32633_12day_pairs.nc'    
     }
 
-for A  in ['SLP','ITA','GER']:
-    
-    print(A)
-   
-    ds = xr.load_dataset(ROOT + 'S1_backscatter/' + backscatter_names.get(A), engine = 'h5netcdf')\
-        .sortby(['x','y'])
-        
-    crs_ds = ds['spatial_ref'].attrs['crs_wkt']
-    
-    aoi = geoms.loc[geoms.AOI.str.startswith(A),:].to_crs(crs_ds)
+for path_, library in [('S1_backscatter/',  backscatter_names),
+                             ('S1_coherence/', coherence_names)]:
+    print(path_, '\n')
 
-    aoi.loc[:,'geometry'] = aoi.geometry.buffer(250)
-    aoi = aoi.set_index('AOI')  
+    for A  in ['SLP','ITA','GER']:
+        print(A)
 
-    for AOI, row in aoi.iterrows():
-        print(AOI)
-        xmin, ymin, xmax, ymax = row['geometry'].bounds
-        
-        ds_crop = ds.sel({'x':slice(xmin, xmax), 'y':slice(ymin, ymax)})
-        
-        ds_crop.to_netcdf(ROOT + 'S1_backscatter/cropped/' + AOI + '.nc',
-            engine = 'h5netcdf')
+        ds = xr.load_dataset(ROOT + path_ + library.get(A), engine = 'h5netcdf')
+        crs_ds = ds['spatial_ref'].attrs['crs_wkt']
+        ds = ds.rio.write_crs(crs_ds).rio.reproject(CRS).sortby(['x', 'y'])
 
-for A  in ['SLP','GER','ITA']:
-    
-    print(A)
-   
-    ds = xr.load_dataset(ROOT + 'S1_coherence/' + coherence_names.get(A), engine = 'h5netcdf')\
-        .sortby(['x','y'])
-        
-    crs_ds = ds['spatial_ref'].attrs['crs_wkt']
-    
-    aoi = geoms.loc[geoms.AOI.str.startswith(A),:].to_crs(crs_ds)
+        aoi = AOIs.loc[AOIs['Country'] == A,:].copy()
 
-    aoi.loc[:,'geometry'] = aoi.geometry.buffer(250)
-    aoi = aoi.set_index('AOI')  
+        for AOI, row in aoi.iterrows():
+            print(AOI)
+            xmin, ymin, xmax, ymax = row['geometry'].bounds
 
-    for AOI, row in aoi.iterrows():
-        print(AOI)
-        xmin, ymin, xmax, ymax = row['geometry'].bounds
-        
-        ds_crop = ds.sel({'x':slice(xmin, xmax), 'y':slice(ymin, ymax)})
-        
-        ds_crop.to_netcdf(ROOT + 'S1_coherence/cropped/' + AOI + '.nc',
-            engine = 'h5netcdf')
+            ds_crop = ds.sel({'x':slice(xmin, xmax), 'y':slice(ymin, ymax)})
+            
+            if path_ == "S1_backscatter/":
+                ds_crop.isel(time = 1)['VV'].plot()
+                plt.show()
+            else:
+                ds_crop.isel(pair = 1)['coherence'].plot()
+                plt.show()
+
+            ds_crop.to_netcdf(ROOT + path_ + 'cropped/' + AOI + '.nc',
+                engine = 'h5netcdf')

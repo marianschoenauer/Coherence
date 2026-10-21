@@ -68,16 +68,8 @@ for AOI, row in AOIs.iterrows():
     
     # select time interval of interest
     s2_full = s2_full.sortby(['time']).sel({'time':slice(start, end)})
-            
-    # Coherence
-    coherence_full =xr.load_dataset(ROOT + 'satellite_data/S1_coherence/cropped/'+AOI+'.nc',
-                               engine = 'h5netcdf')
 
-    coherence_full = coherence_full\
-        .rio.write_crs(coherence_full.spatial_ref.attrs['crs_wkt'])\
-            .rio.reproject_match(s1_bs_full)
-
-    def coherence_baseline_days(days, dataset):
+    def coherence_baseline_days(days, dataset, Resolution):
         """
         extract coherence layers based on baseline days.
 
@@ -91,8 +83,8 @@ for AOI, row in AOIs.iterrows():
         XR.DATASET.
         """
 
-        name = "coh_" + str(days)
-        coh_x = dataset.sel(pair=dataset.baseline_days == days)\
+        name = "coh" + str(Resolution) + "_" + str(days)
+        coh_x = dataset.sel(pair=dataset.baseline_days.isin([days,days-1]))\
             .rename({'coherence':name})
         np.diff(coh_x.x)
         coh_x = coh_x.assign_coords(pair = coh_x.slave_time.values)
@@ -103,17 +95,42 @@ for AOI, row in AOIs.iterrows():
                                  'slave_time'])
         return coh_x
 
-    coh_12 = coherence_baseline_days(12, coherence_full)
-    coh_24 = coherence_baseline_days(24, coherence_full)
-    coh_36 = coherence_baseline_days(36, coherence_full)
+    # Coherence
+    coherence40_full =xr.load_dataset(ROOT + 'satellite_data/S1_coherence/cropped/'+AOI+'.nc',
+                               engine = 'h5netcdf')
+
+    coherence40_full = coherence40_full\
+        .rio.write_crs(coherence40_full.spatial_ref.attrs['crs_wkt'])\
+            .rio.reproject_match(s1_bs_full)
+
+    coh40_12 = coherence_baseline_days(12, coherence40_full, 40)
+    #coh40_24 = coherence_baseline_days(24, coherence40_full, 40)
+    #coh40_36 = coherence_baseline_days(36, coherence40_full, 40)
+    
+    # Coherence 20 m resolution
+    
+    coherence20_full =xr.load_dataset(ROOT + 'satellite_data/S1_coherence_20m/cropped/'+AOI+'.nc',
+                               engine = 'h5netcdf')
+
+    coherence20_full = coherence20_full\
+        .rio.write_crs(coherence20_full.spatial_ref.attrs['crs_wkt'])\
+            .rio.reproject_match(s1_bs_full)
+
+    coh20_12 = coherence_baseline_days(12, coherence20_full, 20)
+    #coh20_24 = coherence_baseline_days(24, coherence20_full, 20)
+    #coh20_36 = coherence_baseline_days(36, coherence20_full, 20)
 
     # merge and export
     conc = xr.merge([s1_bs_full,
                      s2_full,
-                     coh_12, coh_24, coh_36
+                     coh40_12, #coh40_24, coh40_36,
+                     coh20_12, #coh20_24, coh20_36
                       ],compat='no_conflicts',join='outer')
     
-    del s1_bs_full, s2_full, coh_12, coh_24, coh_36, coherence_full
+    del s1_bs_full, s2_full, 
+    coh40_12, #coh40_24, coh40_36,
+    coh20_12, #coh20_24, coh20_36, 
+    coherence40_full,coherence20_full
 
     conc = conc.sortby(['x','y','time'])
     conc = conc.drop_vars('spatial_ref')

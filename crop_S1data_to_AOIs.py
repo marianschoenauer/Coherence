@@ -4,8 +4,7 @@ Created on Thu Sep 24 11:17:37 2026
 
 @author: Marian Schonauer
 """
-import numpy as np
-import pandas as pd
+
 import geopandas as gpd
 import xarray as xr
 import rioxarray as rio
@@ -35,8 +34,15 @@ coherence_names = {
     'ITA':'ITA_coherence_stack_INT40_40m_32633_12day_pairs.nc'    
     }
 
+coherence20_names = {
+    'SLP':'SLP_coherence_stack_10m_2024_32633_12day_BURST_5x1_20m.nc',
+    'GER':'Fridrieke_coherence_stack_GER_test_0_clean_v2_12day_BURST_5x1_20m.nc',
+    'ITA':'ITA_coherence_stack_INT40_40m_32633_12day_pairs_12day_BURST_5x1_20m.nc'    
+    }
+
 for path_, library in [('S1_backscatter/',  backscatter_names),
-                             ('S1_coherence/', coherence_names)]:
+                       ('S1_coherence/', coherence_names),
+                       ('S1_coherence_20m/', coherence20_names)]:
     print(path_, '\n')
 
     for A  in ['SLP','ITA','GER']:
@@ -53,7 +59,7 @@ for path_, library in [('S1_backscatter/',  backscatter_names),
             xmin, ymin, xmax, ymax = row['geometry'].bounds
 
             ds_crop = ds.sel({'x':slice(xmin, xmax), 'y':slice(ymin, ymax)})
-            
+
             if path_ == "S1_backscatter/":
                 ds_crop.isel(time = 1)['VV'].plot()
                 plt.show()
@@ -63,3 +69,6 @@ for path_, library in [('S1_backscatter/',  backscatter_names),
 
             ds_crop.to_netcdf(ROOT + path_ + 'cropped/' + AOI + '.nc',
                 engine = 'h5netcdf')
+            
+            del xmin, ymin, xmax, ymax, ds_crop
+        del ds, crs_ds, aoi

@@ -42,7 +42,7 @@ AOIs = gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = "AOIs_individual_gap
 AOIs['AOI'] = AOIs['Country'] + "_" + AOIs['ID_No'].astype(str)
 AOIs = AOIs.set_index('AOI')
 
-# %% create Mean diffs
+#  create Mean diffs
 
 Df_nc = []
 
@@ -100,8 +100,8 @@ for AOI,row in AOIs.iterrows():
     
     ds = xr.merge(list_da)
     
-    plt.imshow(ds.sel(feature = 'VV_intensity_1')['VV'])
-    plt.show()
+    #plt.imshow(ds.sel(feature = 'VV_intensity_1')['VV'])
+    #plt.show()
     
 
 # labelling
@@ -149,7 +149,7 @@ for AOI,row in AOIs.iterrows():
     
     del df_list, tp_sat, tn_sat, sat, TN, TP, tp, tn
 
-# %% set index
+#  set index
 
 Df_nc_c = pd.concat(Df_nc)
 

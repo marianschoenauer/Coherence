@@ -42,27 +42,26 @@ FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 
 Df = pd.read_pickle(ROOT + "df.pkl")
 
+# create country as dummy-coded variables
 dummies = pd.get_dummies(Df.reset_index('Country')['Country'], prefix='Country', dtype=int)
 
 dummies.columns = pd.MultiIndex.from_arrays([list(dummies.columns), [' ', ' ', ' ']])
 
 Df = Df.join(dummies)
 
+# add weights for sample sizes
 sizes= Df.groupby(['Gap']).size()
 sizes = 1 / (sizes  / sizes.sum()).to_frame(('weights', " "))
-
 Df = Df.merge(sizes, left_index = True, right_index = True)
 
 # %% plot Time Series
-A = 'ITA'
-
 sites = {
     'SLP': 'SLP_30.tif',
     'ITA': 'ITA_70.tif',
     'GER': 'GER_5.tif',
 }
 
-SITE = sites.get(A)
+SITE = sites.get('SLP')
 
 conc = xr.load_dataset(NC +SITE.replace('.tif','.nc'), engine = "h5netcdf")
 conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
@@ -103,34 +102,47 @@ pl['days'] = pl.reset_index().time.dt.days.values
 for col in pl.columns.drop(['days']):
     sns.lineplot(data = pl.reset_index(), x = 'days', y = col, hue = 'Gap')
     plt.axvline(0)
-    plt.savefig(FIGS + 'ts_' +A + col + '.png', dpi = 300)
     plt.show()
 
 del SITE, col, conc, pl, sat, sites, TN, tn, tn_sat, TP, tp_sat, tp
 
-
 # %% settings
+single = ['B12', 'B4', 'B8', 'NDVI', 
+          'RRVI', 'VH', 'VV', 'WI', 
+          'coh20_12',
+          'coh40_12']
 
 cols_s2 = ['NDVI','B12',] #'B3','B4','B5','B8A','B11',
 cols_backscatter = ['WI', 'VV', 'RRVI'] #'Rc','RVI','VH',
-cols_coherence_12 = ['coh_12'] #,
-cols_coherence_12_24_36 = ['coh_12', 'coh_24', 'coh_36', ]
+
+sce_data = {**{f'single_{col}': [col] for col in single},
+            
+            'coherence20and40': ['coh20_12', 'coh40_12'],
+
+            'backscatter': cols_backscatter,
+            'backscatter+coherence20': cols_backscatter+['coh20_12'],
+            'backscatter+coherence40': cols_backscatter+['coh40_12'],
+            's2': cols_s2,
+            's2+backscatter': cols_s2 + cols_backscatter,
+            's2+coherence20': cols_s2 + ['coh20_12'],
+            's2+coherence40': cols_s2 + ['coh40_12'],
+            
+            's2+backscatter+coherence20': cols_s2+ cols_backscatter + ['coh20_12'],
+            's2+backscatter+coherence40': cols_s2+ cols_backscatter + ['coh40_12']
+           }
+
 Country = ['Country_SLP', 'Country_GER', 'Country_ITA']
 
-sce_data = {'coherence_12_24_36':cols_coherence_12_24_36 + Country,
-            'coherence':cols_coherence_12+ Country,
-            'backscatter':cols_backscatter+ Country,
-            'backscatter+coherence':cols_backscatter+cols_coherence_12+ Country,
-            's2':cols_s2+ Country,
-            's2+backscatter': cols_s2 + cols_backscatter+ Country,
-            's2+coherence': cols_s2 + cols_coherence_12+ Country,
-            's2+backscatter+coherence': cols_s2+ cols_backscatter + cols_coherence_12+ Country
-           }
+sce_data = {
+    name: cols + Country
+    for name, cols in sce_data.items()
+}
 
 sce = pd.DataFrame({'cols': sce_data.values()}, index=sce_data.keys())
 
-del cols_s2, cols_backscatter, cols_coherence_12, cols_coherence_12_24_36, sce_data
+del cols_s2, cols_backscatter, sce_data
 
+sce.to_frame().to_file(TABS + 'settings.xlsx')
 # %% model training
 
 output_settings = []
@@ -142,6 +154,7 @@ output_aois = []
 Tests = []
 Coefs = []
 for Setting, cols in sce.iterrows():
+    print(Setting)
 
     tests = []
     coefs = []
@@ -161,9 +174,6 @@ for Setting, cols in sce.iterrows():
 
         y = train.reset_index().loc[:,'Gap'].values.flatten()
         X = train.to_numpy()
-
-        #pos_weight = np.sqrt(train.groupby('Gap').size()[False]/train.groupby('Gap').size()[True])
-        #weights = np.where(y, pos_weight, 1)
 
         pipe = Pipeline([('scaler',StandardScaler()),
                          ('model',model(random_state = 0))])
@@ -190,7 +200,7 @@ Coef = pd.concat(Coefs, axis = 0)
 
 Test.index = Test.index.remove_unused_levels()
 
-#  weights
+# feature importances
 
 coefs = Coef.groupby(['Feature' ,'feature_seg' , 'Setting', 'fold']).mean()
 
@@ -198,7 +208,7 @@ cc = coefs\
         .reorder_levels([2,0,1,3])\
             .sort_index()
 
-cc.unstack('Setting').to_excel(TABS + A+'model_weights.xlsx')
+cc.unstack('Setting').to_excel(TABS + 'LOAO_ind_model_weights.xlsx')
 
 #  validation metrics
 
@@ -238,8 +248,9 @@ VAL = VAL.set_index('Country',append = True)
 
 
 sns.boxplot(VAL, \
-            y = 'setting', x = 'F1', hue = 'Country')
-plt.savefig(FIGS + A+ '_val_metrics_boxplot.png')
+            y = 'setting', x = 'F1', hue = 'Country', 
+            order = sce.index)
+plt.savefig(FIGS + 'LOAO_ind_val_metrics_boxplot.png')
 plt.show()
 
 summary = VAL.groupby(['Country','setting'])['F1'].describe()
@@ -248,26 +259,52 @@ print('F1', summary)
 
 best_set = summary['mean'].idxmax()
 
-VAL.to_excel(TABS+A+"val_metrics.xlsx")
+VAL.to_excel(TABS+"LOAO_ind_val_metrics_20m.xlsx")
+summary.to_excel(TABS+"LOAO_ind_val_metrics_20m_summaryF1.xlsx")
 
 #  print prediction maps
 Test = Test.sort_index()
 
 OUT = ROOT + "preds/"
 
-#os.mkdir(OUT+A)
-
 # %% F1 vs. size
-Gapsize = Df.reset_index().groupby(['AOI', 'Gap']).size().loc[ix[:,True]].to_frame('area')
-Gapsize.index.names = ['test_area']
 
-si = VAL.merge(Gapsize, left_index = True, right_index = True)
+# merge gaps
 
-sns.scatterplot(data = si.loc[best_set[1],:], x = 'area', y = 'F1', hue = 'Country')
+gaps = []
+for layer in ["canopy_diffs", "Italy_windthrows", "Germany_Friederike"]:
+    gaps.append(gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = layer).to_crs(3035))
+    
+gaps = pd.concat(gaps)
+gaps['Area'] = gaps.area
+
+
+AOIs = gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = "AOIs_individual_gaps_3035")
+AOIs['AOI'] = AOIs['Country'] + "_" + AOIs['ID_No'].astype(str)
+
+AOIs = AOIs.set_index('AOI')
+
+
+sizes = AOIs.sjoin(gaps.loc[:,['geometry','Area']])
+
+sizes = sizes.groupby('AOI').sum('Area')
+
+sizes.index.names = ['test_area']
+
+sizes = VAL.merge(sizes, left_index = True, right_index = True)
+
+sns.scatterplot(data = sizes.loc[best_set[1],:], x = 'Area', y = 'F1', hue = 'Country')
 plt.xscale('log')
 plt.xlabel('area [1000 m2]')
 
 plt.savefig(FIGS + 'F1_vs_gapsize.png')
+plt.show()
+
+sns.boxplot(data = sizes, x = 'Country', y = 'Area')
+plt.yscale('log')
+plt.ylabel('Gap size [m²]')
+plt.xlabel('')
+plt.savefig(FIGS + 'Gapsize.png')
 # %%
 for AOI in Test.index.levels[2]:
 

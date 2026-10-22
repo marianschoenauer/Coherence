@@ -43,7 +43,7 @@ FIGS, TABS = ROOT + "Manuscript/figures/", ROOT + "Manuscript/tables/"
 Df = pd.read_pickle(ROOT + "df.pkl")
 
 # create country as dummy-coded variables
-dummies = pd.get_dummies(Df.reset_index('Country')['Country'], prefix='Country', dtype=int)
+dummies = pd.get_dummies(Df.reset_index('Country')['Country'], prefix='C', dtype=int)
 
 dummies.columns = pd.MultiIndex.from_arrays([list(dummies.columns), [' ', ' ', ' ']])
 
@@ -55,6 +55,8 @@ sizes = 1 / (sizes  / sizes.sum()).to_frame(('weights', " "))
 Df = Df.merge(sizes, left_index = True, right_index = True)
 
 Df = Df.sort_index()
+
+Df.columns.levels[0]
 
 # %% plot Time Series
 sites = {
@@ -109,39 +111,38 @@ for col in pl.columns.drop(['days']):
 del SITE, col, conc, pl, sat, sites, TN, tn, tn_sat, TP, tp_sat, tp
 
 # %% settings
-single = ['B12', 'B4', 'B8', 'NDVI',
-          'RRVI', 'VH', 'VV', 'WI', 
-          'coh20_12',
-          'coh40_12']
 
-cols_s2 = ['NDVI_min','B12_min',
-           'NDVI_max','B12_max',]
+single_opt = ['B12', 'NDVI']
+single_bac = ['VV', 'SSVI', 'RRVI']
+single_coh = ['coh12']
 
-cols_backscatter = ['WI_min', 'WI_max', 
-                    'VV_min', 'WI_max', 
-                    'RRVI_min', 'WI_max'] #'Rc','RVI','VH',
+single = single_opt + single_bac + single_coh
 
-sce_data = {**{f'{col}_Min': [f'{col}_min'] for col in single},
-            **{f'{col}_Max': [f'{col}_max'] for col in single},
+cols_opt = [f'{col}_min' for col in single_opt] + [f'{col}_max' for col in single_opt]
+
+cols_bac = [f'{col}_min' for col in single_bac] + [f'{col}_max' for col in single_bac]
+
+cols_coh = [f'{col}_min' for col in single_coh] + [f'{col}_max' for col in single_coh]
+
+sce_data = {**{f'{col}_min': [f'{col}_min'] for col in single},
+            **{f'{col}_max': [f'{col}_max'] for col in single},
             
-            **{f'{col}_MinMax': [f'{col}_min', f'{col}_max'] for col in single},
+            #**{f'{col}': [f'{col}_min', f'{col}_max'] for col in single},
             
-            #'coherence20and40': ['coh20_12_min', 'coh40_12_min',
-             #                    'coh20_12_max', 'coh40_12_max'],
+            'coherence': cols_coh,
 
-            'WI_VV_RRVI_MinMax': cols_backscatter,
-            'WI_VV_RRVI_MinMax+coh20_MinMax': cols_backscatter+['coh20_12_min'],
+            'backscatter': cols_bac,
+            'backscatter+coherence': cols_bac+cols_coh,
             #'backscatter+coherence40': cols_backscatter+['coh40_12_min'],
-            'NDVI_B12_MinMax': cols_s2,
-            'NDVI_B12_MinMax+WI_VV_RRVI_MinMax': cols_s2 + cols_backscatter,
-            'NDVI_B12_MinMax+coh20_MinMax': cols_s2 + ['coh20_12_min'],
+            'optical': cols_opt,
+            'optical+backscatter': cols_opt + cols_bac,
+            'optical+coherence': cols_opt + cols_coh,
             #'s2+coherence40': cols_s2 + ['coh40_12_min'],
-            
-            'NDVI_B12_MinMax+WI_VV_RRVI_MinMax+coh20_MinMax': cols_s2+ cols_backscatter + ['coh20_12_min'],
+            'optical+backscatter+coherence': cols_opt+ cols_bac + cols_coh,
             #'s2+backscatter+coherence40': cols_s2+ cols_backscatter + ['coh40_12_min']
            }
 
-Country = ['Country_SLP', 'Country_GER', 'Country_ITA']
+Country = ['C_SLP', 'C_GER', 'C_ITA']
 
 sce_data = {
     name: cols + Country
@@ -150,9 +151,8 @@ sce_data = {
 
 sce = pd.DataFrame({'cols': sce_data.values()}, index=sce_data.keys())
 
-del cols_s2, cols_backscatter, sce_data
+sce.to_excel(TABS + 'settings_reduced.xlsx')
 
-sce.to_excel(TABS + 'settings.xlsx')
 # %% model training
 
 output_settings = []
@@ -163,7 +163,7 @@ output_aois = []
 
 Tests = []
 Coefs = []
-for Setting, cols in sce.iterrows():#.loc[['s2','coherence20and40'],:]
+for Setting, cols in sce.iterrows():#
     print(Setting)
 
     tests = []
@@ -214,12 +214,10 @@ Test.index = Test.index.remove_unused_levels()
 
 # feature importances
 
-coefs = Coef.groupby(['Feature' ,'feature_seg' , 'Setting', 'fold']).mean()
-
-cc = coefs\
+coefs = Coef.groupby(['Feature' ,'feature_seg' , 'Setting', 'fold']).mean()\
         .reorder_levels([2,0,1,3])\
             .sort_index()
-
+            
 #  validation metrics
 
 results_val = []
@@ -232,21 +230,16 @@ for (aoi), group in Test.groupby('AOI'):
         y_pred = group.loc[:,Setting].values
 
         F1 = f1_score(y_true = y_true, y_pred = y_pred, zero_division = 0)
-        F05 = fbeta_score(y_true = y_true, y_pred = y_pred, beta = 0.5, \
-                          zero_division = 0)
         Precision = precision_score(y_true = y_true, y_pred = y_pred, \
                                     zero_division = 0)
         Recall = recall_score(y_true = y_true, y_pred = y_pred, \
                                     zero_division = 0)
-        MCC = matthews_corrcoef(y_true = y_true, y_pred = y_pred)
 
         results_val.append({'setting':Setting[0][5:],
                         'test_area':aoi,
                         'F1':F1,
-                        'F05': F05,
                         'Precision':Precision,
-                        'Recall':Recall,
-                        'MCC':MCC})    
+                        'Recall':Recall})    
 
 VAL = pd.DataFrame(results_val).set_index(['setting','test_area'])\
     .sort_index()
@@ -267,9 +260,11 @@ print('F1', summary)
 
 best_set = summary['mean'].idxmax()
 
-cc.unstack('Setting').to_excel(TABS + 'LOAO_ind_model_weights_7daysMinMax.xlsx')
-VAL.to_excel(TABS+"LOAO_ind_val_metrics_20m_7daysMinMax.xlsx")
-summary.to_excel(TABS+"LOAO_ind_val_metrics_20m_summaryF1_7daysMinMax.xlsx")
+# %% print to tables
+
+coefs.unstack('Setting').to_excel(TABS + 'LOAO_ind_model_weights_7daysMinMax_reduced.xlsx')
+VAL.to_excel(TABS+"LOAO_ind_val_metrics_20m_7daysMinMax_reduced.xlsx")
+summary.to_excel(TABS+"LOAO_ind_val_metrics_20m_summaryF1_7daysMinMax_reduced.xlsx")
 
 #  print prediction maps
 Test = Test.sort_index()
@@ -313,11 +308,11 @@ plt.yscale('log')
 plt.ylabel('Gap size [m²]')
 plt.xlabel('')
 plt.savefig(FIGS + 'Gapsize.png')
-# %%
+# %% rasters
 for AOI in Test.index.levels[2]:
 
     OUT_sub = OUT+'LOAO/'+AOI.replace('.tif','')
-    #os.mkdir(OUT_sub)
+    os.mkdir(OUT_sub)
     out = Test.loc[ix[:,:,AOI],:].copy()
 
     #if SEG:

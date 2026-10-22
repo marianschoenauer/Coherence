@@ -52,7 +52,7 @@ for AOI,row in AOIs.iterrows():
     
     conc = xr.load_dataset(NC + AOI + '.nc', engine = "h5netcdf")
     conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
-    conc = conc.assign(WI = conc['VV'] + conc['VH'])
+    conc = conc.assign(SSVI = conc['VV'] + conc['VH'])
     conc = conc.assign(RRVI = 10 ** ((conc['VH'] - conc['VV']) / 10))
     conc = conc.assign(NDVI = (conc["B8"] - conc["B4"]) / (conc["B8"] + conc["B4"]))
     

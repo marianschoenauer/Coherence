@@ -58,16 +58,34 @@ for AOI,row in AOIs.iterrows():
     
     month_before = -pd.to_timedelta(30, unit = 'd')
     day_0 = pd.to_timedelta(0, unit = 'd')
-    delay  = pd.to_timedelta(5, unit = 'd')
-    month_after = pd.to_timedelta(30, unit = 'd')
+    period_after = pd.to_timedelta(7, unit = 'd')
     
     Before = conc.sortby('time').sel({"time":slice(month_before, day_0)}).mean(dim = 'time')
-    After = conc.sortby('time').sel({"time":slice(delay, month_after)}).mean(dim = 'time')
     
-    Mean = Before - After
-    ds = Mean.fillna(Mean.mean())
+    After_min = conc.sortby('time').sel({"time":slice(day_0, period_after)}).min(dim = 'time')
+    After_mean = conc.sortby('time').sel({"time":slice(day_0, period_after)}).mean(dim = 'time')
+    After_max = conc.sortby('time').sel({"time":slice(day_0, period_after)}).max(dim = 'time')
     
-    del month_before, month_after, delay, Before, After, Mean, conc
+    Diff_min = Before - After_min
+    Diff_min = Diff_min.rename({
+        var: f"{var}_min"
+        for var in Diff_min.data_vars})
+    '''
+    Mean_mean = Before - After_mean
+    Mean_mean = Mean_mean.rename({
+        var: f"{var}_mean"
+        for var in Mean_mean.data_vars})
+    '''
+    Diff_max = Before - After_max
+    Diff_max = Diff_max.rename({
+        var: f"{var}_max"
+        for var in Diff_max.data_vars})
+    
+    Descriptives = xr.merge([Diff_min, Diff_max]) #Mean_mean
+
+    ds = Descriptives.fillna(Descriptives.mean())
+    
+    del month_before, period_after, Before, After_min, After_max, Diff_min, Diff_max, Descriptives, conc
     
 # Segmentation features
     
@@ -80,11 +98,11 @@ for AOI,row in AOIs.iterrows():
                                           edges=False,
                                           texture=True,
                                           sigma_min=1,
-                                          sigma_max=16,
-                                          num_sigma = 5)
+                                          sigma_max=8,
+                                          num_sigma = 3)
     
         np_name = np.array(feat_name)
-        np_sigmas = np.array(["1","2","3","4","5"])
+        np_sigmas = np.array(["1","2","3"])
     
         feat_names = np.concatenate((
             np_name + np.array(["_intensity_"])+ np_sigmas,
@@ -102,12 +120,10 @@ for AOI,row in AOIs.iterrows():
     
     #plt.imshow(ds.sel(feature = 'VV_intensity_1')['VV'])
     #plt.show()
-    
 
 # labelling
     df_list = []
     
-
     TN = rio.open_rasterio(ROOT + "clusters/TN/"+AOI+".tif").rio.clip(AOI_geom)
 
     TP = rio.open_rasterio(ROOT + "clusters/TP/"+AOI+".tif")\

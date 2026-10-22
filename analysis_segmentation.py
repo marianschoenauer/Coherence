@@ -54,9 +54,11 @@ sizes= Df.groupby(['Gap']).size()
 sizes = 1 / (sizes  / sizes.sum()).to_frame(('weights', " "))
 Df = Df.merge(sizes, left_index = True, right_index = True)
 
+Df = Df.sort_index()
+
 # %% plot Time Series
 sites = {
-    'SLP': 'SLP_30.tif',
+    'SLP': 'SLP_49.tif',
     'ITA': 'ITA_70.tif',
     'GER': 'GER_5.tif',
 }
@@ -107,28 +109,36 @@ for col in pl.columns.drop(['days']):
 del SITE, col, conc, pl, sat, sites, TN, tn, tn_sat, TP, tp_sat, tp
 
 # %% settings
-single = ['B12', 'B4', 'B8', 'NDVI', 
+single = ['B12', 'B4', 'B8', 'NDVI',
           'RRVI', 'VH', 'VV', 'WI', 
           'coh20_12',
           'coh40_12']
 
-cols_s2 = ['NDVI','B12',] #'B3','B4','B5','B8A','B11',
-cols_backscatter = ['WI', 'VV', 'RRVI'] #'Rc','RVI','VH',
+cols_s2 = ['NDVI_min','B12_min',
+           'NDVI_max','B12_max',]
 
-sce_data = {**{f'single_{col}': [col] for col in single},
-            
-            'coherence20and40': ['coh20_12', 'coh40_12'],
+cols_backscatter = ['WI_min', 'WI_max', 
+                    'VV_min', 'WI_max', 
+                    'RRVI_min', 'WI_max'] #'Rc','RVI','VH',
 
-            'backscatter': cols_backscatter,
-            'backscatter+coherence20': cols_backscatter+['coh20_12'],
-            'backscatter+coherence40': cols_backscatter+['coh40_12'],
-            's2': cols_s2,
-            's2+backscatter': cols_s2 + cols_backscatter,
-            's2+coherence20': cols_s2 + ['coh20_12'],
-            's2+coherence40': cols_s2 + ['coh40_12'],
+sce_data = {**{f'{col}_Min': [f'{col}_min'] for col in single},
+            **{f'{col}_Max': [f'{col}_max'] for col in single},
             
-            's2+backscatter+coherence20': cols_s2+ cols_backscatter + ['coh20_12'],
-            's2+backscatter+coherence40': cols_s2+ cols_backscatter + ['coh40_12']
+            **{f'{col}_MinMax': [f'{col}_min', f'{col}_max'] for col in single},
+            
+            #'coherence20and40': ['coh20_12_min', 'coh40_12_min',
+             #                    'coh20_12_max', 'coh40_12_max'],
+
+            'WI_VV_RRVI_MinMax': cols_backscatter,
+            'WI_VV_RRVI_MinMax+coh20_MinMax': cols_backscatter+['coh20_12_min'],
+            #'backscatter+coherence40': cols_backscatter+['coh40_12_min'],
+            'NDVI_B12_MinMax': cols_s2,
+            'NDVI_B12_MinMax+WI_VV_RRVI_MinMax': cols_s2 + cols_backscatter,
+            'NDVI_B12_MinMax+coh20_MinMax': cols_s2 + ['coh20_12_min'],
+            #'s2+coherence40': cols_s2 + ['coh40_12_min'],
+            
+            'NDVI_B12_MinMax+WI_VV_RRVI_MinMax+coh20_MinMax': cols_s2+ cols_backscatter + ['coh20_12_min'],
+            #'s2+backscatter+coherence40': cols_s2+ cols_backscatter + ['coh40_12_min']
            }
 
 Country = ['Country_SLP', 'Country_GER', 'Country_ITA']
@@ -142,7 +152,7 @@ sce = pd.DataFrame({'cols': sce_data.values()}, index=sce_data.keys())
 
 del cols_s2, cols_backscatter, sce_data
 
-sce.to_frame().to_file(TABS + 'settings.xlsx')
+sce.to_excel(TABS + 'settings.xlsx')
 # %% model training
 
 output_settings = []
@@ -153,7 +163,7 @@ output_aois = []
 
 Tests = []
 Coefs = []
-for Setting, cols in sce.iterrows():
+for Setting, cols in sce.iterrows():#.loc[['s2','coherence20and40'],:]
     print(Setting)
 
     tests = []
@@ -168,10 +178,12 @@ for Setting, cols in sce.iterrows():
 
         train.columns.names = ['Feature', 'feature_seg']
 
+        '''
         if np.any(test.reset_index(['Gap','AOI']).index.isin(
                 train.reset_index(['Gap','AOI']).index)):
             print("OVERLAPPING PIXELS")
-
+        '''
+        
         y = train.reset_index().loc[:,'Gap'].values.flatten()
         X = train.to_numpy()
 
@@ -208,8 +220,6 @@ cc = coefs\
         .reorder_levels([2,0,1,3])\
             .sort_index()
 
-cc.unstack('Setting').to_excel(TABS + 'LOAO_ind_model_weights.xlsx')
-
 #  validation metrics
 
 results_val = []
@@ -245,8 +255,6 @@ VAL.columns.name = 'Metric'
 VAL['Country'] = VAL.reset_index('test_area')['test_area'].str[:3].values
 VAL = VAL.set_index('Country',append = True)
 
-
-
 sns.boxplot(VAL, \
             y = 'setting', x = 'F1', hue = 'Country', 
             order = sce.index)
@@ -259,8 +267,9 @@ print('F1', summary)
 
 best_set = summary['mean'].idxmax()
 
-VAL.to_excel(TABS+"LOAO_ind_val_metrics_20m.xlsx")
-summary.to_excel(TABS+"LOAO_ind_val_metrics_20m_summaryF1.xlsx")
+cc.unstack('Setting').to_excel(TABS + 'LOAO_ind_model_weights_7daysMinMax.xlsx')
+VAL.to_excel(TABS+"LOAO_ind_val_metrics_20m_7daysMinMax.xlsx")
+summary.to_excel(TABS+"LOAO_ind_val_metrics_20m_summaryF1_7daysMinMax.xlsx")
 
 #  print prediction maps
 Test = Test.sort_index()
@@ -277,7 +286,6 @@ for layer in ["canopy_diffs", "Italy_windthrows", "Germany_Friederike"]:
     
 gaps = pd.concat(gaps)
 gaps['Area'] = gaps.area
-
 
 AOIs = gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = "AOIs_individual_gaps_3035")
 AOIs['AOI'] = AOIs['Country'] + "_" + AOIs['ID_No'].astype(str)

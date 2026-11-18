@@ -109,9 +109,14 @@ for AOI, row in AOIs.iterrows():
     #coh40_36 = coherence_baseline_days(36, coherence40_full)
     '''
     # Coherence 20 m resolution
-    
+
     coherence20_full =xr.load_dataset(ROOT + 'satellite_data/S1_coherence_20m/cropped/'+AOI+'.nc',
                                engine = 'h5netcdf')
+
+    try:
+        coherence20_full["baseline_days"] = coherence20_full.baseline_days.dt.days.astype(np.int32)
+    except: 
+        pass
 
     coherence20_full = coherence20_full\
         .rio.write_crs(coherence20_full.spatial_ref.attrs['crs_wkt'])\

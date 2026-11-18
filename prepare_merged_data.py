@@ -42,6 +42,12 @@ AOIs = gpd.read_file(ROOT + "shapefiles/gaps.gpkg", layer = "AOIs_individual_gap
 AOIs['AOI'] = AOIs['Country'] + "_" + AOIs['ID_No'].astype(str)
 AOIs = AOIs.set_index('AOI')
 
+
+np.round(AOIs.loc[AOIs.Country == 'GER',:].to_crs(4326).union_all().bounds, 2)
+np.round(AOIs.loc[AOIs.Country == 'SLP',:].to_crs(4326).union_all().bounds, 2)
+np.round(AOIs.loc[AOIs.Country == 'ITA',:].to_crs(4326).union_all().bounds, 2)
+
+
 #  create Mean diffs
 
 Df_nc = []
@@ -51,11 +57,18 @@ for AOI,row in AOIs.iterrows():
     AOI_geom = row[['geometry']]
     
     conc = xr.load_dataset(NC + AOI + '.nc', engine = "h5netcdf")
-    conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])
-    conc = conc.assign(SSVI = conc['VV'] + conc['VH'])
-    conc = conc.assign(RRVI = 10 ** ((conc['VH'] - conc['VV']) / 10))
-    conc = conc.assign(NDVI = (conc["B8"] - conc["B4"]) / (conc["B8"] + conc["B4"]))
+    conc = conc.rio.write_crs(conc.spatial_ref.attrs['crs_wkt'])  
     
+    conc = conc.assign(SDVI = 10 ** (conc['VH'] / 10) - 10 ** (conc['VV'] / 10))
+    conc = conc.assign(SSVI = 10 ** (conc['VH'] / 10) + 10 ** (conc['VV'] / 10))
+    conc = conc.assign(RRVI = 10 ** ((conc['VH'] - conc['VV']) / 10))
+    conc = conc.assign(RVI = (4 * conc['RRVI']) / (conc['RRVI'] + 1))
+    conc = conc.assign(RNDVI = (10 ** (conc['VH'] / 10) - 10 ** (conc['VV'] / 10)) / (10 ** (conc['VH'] / 10) + 10 ** (conc['VV'] / 10)))
+    
+    conc = conc.assign(NDVI = (conc["B8"] - conc["B4"]) / (conc["B8"] + conc["B4"]))
+    conc = conc.assign(NBR = (conc['B8'] - conc['B12']) / (conc['B8'] + conc['B12']))
+    conc = conc.assign(EVI2 = 2.5 * (conc['B8'] - conc['B4']) / (conc['B8'] + 2.4 * conc['B4'] + 1))
+
     month_before = -pd.to_timedelta(30, unit = 'd')
     day_0 = pd.to_timedelta(0, unit = 'd')
     period_after = pd.to_timedelta(7, unit = 'd')
@@ -80,15 +93,15 @@ for AOI,row in AOIs.iterrows():
     Diff_max = Diff_max.rename({
         var: f"{var}_max"
         for var in Diff_max.data_vars})
-    
-    Descriptives = xr.merge([Diff_min, Diff_max]) #Mean_mean
+
+    Descriptives = xr.merge([Diff_min, Diff_max]) 
 
     ds = Descriptives.fillna(Descriptives.mean())
-    
+
     del month_before, period_after, Before, After_min, After_max, Diff_min, Diff_max, Descriptives, conc
-    
+
 # Segmentation features
-    
+
     list_da = []
     coords = ds.coords
     
@@ -149,7 +162,6 @@ for AOI,row in AOIs.iterrows():
 
     tp_sat = sat.loc[tp.index,:].assign(Gap = True, Country = A, AOI = AOI)
     tn_sat = sat.loc[tn.index,:].assign(Gap = False, Country = A, AOI = AOI)
-    
 
     if np.any(tp_sat.index.isin(tn_sat.index)):
         print("pixels overlap")
